@@ -7,7 +7,11 @@ pub struct WordSpan {
 }
 
 pub fn similarity(old: &str, new: &str) -> f64 {
-    let diff = TextDiff::configure().diff_words(old, new);
+    let old_tokens = tokenize(old);
+    let new_tokens = tokenize(new);
+    let old_refs: Vec<&str> = old_tokens.iter().map(|s| s.as_str()).collect();
+    let new_refs: Vec<&str> = new_tokens.iter().map(|s| s.as_str()).collect();
+    let diff = TextDiff::from_slices(&old_refs, &new_refs);
     diff.ratio() as f64
 }
 
@@ -158,5 +162,53 @@ mod tests {
 
         assert!(old_spans.iter().all(|s| !s.changed));
         assert!(new_spans.iter().all(|s| !s.changed));
+    }
+
+    #[test]
+    fn dissimilar_lines_should_not_be_word_diffed() {
+        let cases = vec![
+            (
+                "    let mut tensors = HashMap::new();",
+                "        let bytes = &self.mmap[start..end];",
+            ),
+            (
+                "pub fn parse_header(path: &Path) -> io::Result<HashMap<String, TensorInfo>> {",
+                "#[derive(Debug, Deserialize)]",
+            ),
+            (
+                "    let mut file = File::open(path)?;",
+                "struct RawTensorInfo {",
+            ),
+        ];
+
+        for (old, new) in &cases {
+            assert!(
+                similarity(old, new) < 0.6,
+                "lines should have low similarity (<0.6): old={:?} new={:?} ratio={}",
+                old, new, similarity(old, new)
+            );
+        }
+    }
+
+    #[test]
+    fn similar_lines_should_be_word_diffed() {
+        let cases = vec![
+            (
+                "use std::io::{self, Read};",
+                "use std::io;",
+            ),
+            (
+                "    pub dtype: String,",
+                "    pub dtype: Dtype,",
+            ),
+        ];
+
+        for (old, new) in &cases {
+            assert!(
+                similarity(old, new) >= 0.6,
+                "lines should have high similarity (>=0.6): old={:?} new={:?} ratio={}",
+                old, new, similarity(old, new)
+            );
+        }
     }
 }

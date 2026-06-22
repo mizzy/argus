@@ -2,6 +2,10 @@ use anyhow::{Context, Result};
 use git2::{DiffOptions, Repository};
 use std::collections::HashMap;
 
+use crate::word_diff;
+
+const WORD_DIFF_SIMILARITY_THRESHOLD: f64 = 0.4;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiffLineKind {
     Addition,
@@ -121,8 +125,12 @@ impl DiffState {
         for (dels, adds) in &blocks {
             let pair_count = dels.len().min(adds.len());
             for i in 0..pair_count {
-                let (add_lineno, _) = &adds[i];
-                word_diff_pairs.insert(*add_lineno, dels[i].clone());
+                let (add_lineno, add_text) = &adds[i];
+                let del_text = &dels[i];
+                if word_diff::similarity(del_text, add_text) < WORD_DIFF_SIMILARITY_THRESHOLD {
+                    continue;
+                }
+                word_diff_pairs.insert(*add_lineno, del_text.clone());
             }
         }
 

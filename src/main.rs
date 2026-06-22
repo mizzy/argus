@@ -6,6 +6,7 @@ mod diff;
 mod highlight;
 mod ui;
 mod viewer;
+mod word_diff;
 
 #[derive(Parser)]
 #[command(name = "argus", version, about = "A code reading tool with syntax highlighting and git diff navigation")]

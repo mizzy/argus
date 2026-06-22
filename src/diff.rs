@@ -16,8 +16,8 @@ pub struct DiffState {
     pub addition_lines: HashMap<usize, DiffLineKind>,
     pub deleted_lines: HashMap<usize, Vec<DeletedLine>>,
     pub change_groups: Vec<usize>,
+    pub addition_contents: HashMap<usize, String>,
 }
-
 impl DiffState {
     pub fn load(file_path: &str, rev: Option<&str>) -> Result<Self> {
         let path = std::env::current_dir()?.join(file_path);
@@ -40,6 +40,7 @@ impl DiffState {
         };
 
         let mut addition_lines: HashMap<usize, DiffLineKind> = HashMap::new();
+        let mut addition_contents: HashMap<usize, String> = HashMap::new();
         let mut deleted_lines: HashMap<usize, Vec<DeletedLine>> = HashMap::new();
         let mut last_new_lineno: Option<u32> = None;
         let mut current_hunk_start: u32 = 1;
@@ -53,6 +54,10 @@ impl DiffState {
                 '+' => {
                     if let Some(lineno) = line.new_lineno() {
                         addition_lines.insert(lineno as usize, DiffLineKind::Addition);
+                        let content = String::from_utf8_lossy(line.content())
+                            .trim_end_matches('\n')
+                            .to_string();
+                        addition_contents.insert(lineno as usize, content);
                         last_new_lineno = Some(lineno);
                     }
                 }
@@ -89,6 +94,7 @@ impl DiffState {
 
         Ok(Self {
             addition_lines,
+            addition_contents,
             deleted_lines,
             change_groups,
         })

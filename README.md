@@ -1,6 +1,6 @@
 # Argus
 
-A terminal-based code reading tool with syntax highlighting and git diff navigation.
+A pager with syntax highlighting and git diff visualization.
 
 ## Features
 

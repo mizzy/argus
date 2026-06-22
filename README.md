@@ -2,6 +2,8 @@
 
 A pager with syntax highlighting and git diff visualization.
 
+![screenshot](screenshot.png)
+
 ## Features
 
 - Syntax highlighting based on file extension

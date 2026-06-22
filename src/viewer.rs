@@ -14,7 +14,7 @@ pub struct Viewer {
     total_lines: usize,
     viewport_height: usize,
     diff_state: Option<DiffState>,
-    current_hunk: usize,
+    current_hunk: Option<usize>,
     search_query: Option<String>,
     search_matches: Vec<usize>,
     current_match: usize,
@@ -33,7 +33,7 @@ impl Viewer {
             total_lines,
             viewport_height: 0,
             diff_state,
-            current_hunk: 0,
+            current_hunk: None,
             search_query: None,
             search_matches: Vec::new(),
             current_match: 0,
@@ -160,7 +160,7 @@ impl Viewer {
     }
 
     pub fn current_hunk(&self) -> usize {
-        self.current_hunk
+        self.current_hunk.unwrap_or(0)
     }
 
     pub fn search_query(&self) -> Option<&str> {
@@ -181,18 +181,13 @@ impl Viewer {
             if starts.is_empty() {
                 return;
             }
-            let current_line = self.scroll_offset + 1;
-            let next_idx = starts.iter().position(|s| {
-                let s = *s as usize;
-                let display_row = self
-                    .lineno_to_display_row
-                    .get(&s)
-                    .copied()
-                    .unwrap_or(s);
-                display_row > current_line
-            });
-            self.current_hunk = next_idx.unwrap_or(starts.len() - 1);
-            self.scroll_to_line(starts[self.current_hunk] as usize);
+            let next = match self.current_hunk {
+                None => 0,
+                Some(i) if i + 1 < starts.len() => i + 1,
+                Some(i) => i,
+            };
+            self.current_hunk = Some(next);
+            self.scroll_to_line(starts[next] as usize);
         }
     }
 
@@ -202,18 +197,13 @@ impl Viewer {
             if starts.is_empty() {
                 return;
             }
-            let current_line = self.scroll_offset;
-            let prev_idx = starts.iter().rposition(|s| {
-                let s = *s as usize;
-                let display_row = self
-                    .lineno_to_display_row
-                    .get(&s)
-                    .copied()
-                    .unwrap_or(s);
-                display_row < current_line
-            });
-            self.current_hunk = prev_idx.unwrap_or(0);
-            self.scroll_to_line(starts[self.current_hunk] as usize);
+            let prev = match self.current_hunk {
+                None => 0,
+                Some(i) if i > 0 => i - 1,
+                Some(i) => i,
+            };
+            self.current_hunk = Some(prev);
+            self.scroll_to_line(starts[prev] as usize);
         }
     }
 

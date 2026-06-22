@@ -23,8 +23,9 @@ pub fn draw(frame: &mut Frame, area: Rect, viewer: &mut Viewer, search_input: Op
     let inner_height = content_area.height as usize;
     viewer.update_viewport_height(inner_height);
 
-    let display_lines = build_display_lines(viewer);
+    let (display_lines, lineno_map) = build_display_lines(viewer);
     viewer.update_total_display_lines(display_lines.len());
+    viewer.update_lineno_to_display_row(lineno_map);
 
     let visible: Vec<Line> = display_lines
         .into_iter()
@@ -61,7 +62,7 @@ pub fn draw(frame: &mut Frame, area: Rect, viewer: &mut Viewer, search_input: Op
     }
 }
 
-fn build_display_lines<'a>(viewer: &Viewer) -> Vec<Line<'a>> {
+fn build_display_lines<'a>(viewer: &Viewer) -> (Vec<Line<'a>>, std::collections::HashMap<usize, usize>) {
     let highlighted = viewer.highlighter().highlight(viewer.content());
 
     let addition_marks = viewer
@@ -83,6 +84,7 @@ fn build_display_lines<'a>(viewer: &Viewer) -> Vec<Line<'a>> {
         .collect();
 
     let mut lines: Vec<Line<'a>> = Vec::new();
+    let mut lineno_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
 
     if let Some(deleted) = deleted_map.get(&0) {
         for d in deleted {
@@ -92,6 +94,8 @@ fn build_display_lines<'a>(viewer: &Viewer) -> Vec<Line<'a>> {
 
     for (i, hl_line) in highlighted.into_iter().enumerate() {
         let lineno = i + 1;
+
+        lineno_map.insert(lineno, lines.len());
 
         let is_addition = addition_marks.contains_key(&lineno);
         let is_search_hit = search_line_set.contains(&lineno);
@@ -144,7 +148,7 @@ fn build_display_lines<'a>(viewer: &Viewer) -> Vec<Line<'a>> {
         }
     }
 
-    lines
+    (lines, lineno_map)
 }
 
 fn make_deleted_line(content: &str) -> Line<'static> {

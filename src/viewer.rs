@@ -15,6 +15,9 @@ pub struct Viewer {
     viewport_height: usize,
     diff_state: Option<DiffState>,
     current_hunk: usize,
+    search_query: Option<String>,
+    search_matches: Vec<usize>,
+    current_match: usize,
 }
 
 impl Viewer {
@@ -30,15 +33,22 @@ impl Viewer {
             viewport_height: 0,
             diff_state,
             current_hunk: 0,
+            search_query: None,
+            search_matches: Vec::new(),
+            current_match: 0,
         })
     }
 
-    pub fn draw(&self, frame: &mut Frame, area: Rect) {
-        ui::draw(frame, area, self);
+    pub fn draw_with_search_input(&mut self, frame: &mut Frame, area: Rect, search_input: Option<&str>) {
+        ui::draw(frame, area, self, search_input);
+    }
+
+    pub fn update_viewport_height(&mut self, height: usize) {
+        self.viewport_height = height;
     }
 
     pub fn scroll_down(&mut self, n: usize) {
-        let max = self.total_lines.saturating_sub(self.viewport_height);
+        let max = self.max_scroll();
         self.scroll_offset = (self.scroll_offset + n).min(max);
     }
 
@@ -54,38 +64,65 @@ impl Viewer {
         self.scroll_up(self.viewport_height.saturating_sub(2));
     }
 
+    pub fn half_page_down(&mut self) {
+        self.scroll_down(self.viewport_height / 2);
+    }
+
+    pub fn half_page_up(&mut self) {
+        self.scroll_up(self.viewport_height / 2);
+    }
+
     pub fn scroll_to_top(&mut self) {
         self.scroll_offset = 0;
     }
 
     pub fn scroll_to_bottom(&mut self) {
-        self.scroll_offset = self.total_lines.saturating_sub(self.viewport_height);
+        self.scroll_offset = self.max_scroll();
     }
 
-    pub fn next_diff(&mut self) {
-        if let Some(ref diff) = self.diff_state {
-            let starts = diff.hunk_start_lines();
-            if starts.is_empty() {
-                return;
-            }
-            if self.current_hunk + 1 < starts.len() {
-                self.current_hunk += 1;
-            }
-            self.scroll_offset = starts[self.current_hunk].saturating_sub(1) as usize;
+    pub fn next_match_or_diff(&mut self) {
+        if self.search_query.is_some() {
+            self.next_match();
+        } else {
+            self.next_diff();
         }
     }
 
-    pub fn prev_diff(&mut self) {
-        if let Some(ref diff) = self.diff_state {
-            let starts = diff.hunk_start_lines();
-            if starts.is_empty() {
-                return;
-            }
-            if self.current_hunk > 0 {
-                self.current_hunk -= 1;
-            }
-            self.scroll_offset = starts[self.current_hunk].saturating_sub(1) as usize;
+    pub fn prev_match_or_diff(&mut self) {
+        if self.search_query.is_some() {
+            self.prev_match();
+        } else {
+            self.prev_diff();
         }
+    }
+
+    pub fn search(&mut self, query: String) {
+        if query.is_empty() {
+            self.clear_search();
+            return;
+        }
+
+        let query_lower = query.to_lowercase();
+        let mut matches = Vec::new();
+        for (i, line) in self.content.lines().enumerate() {
+            if line.to_lowercase().contains(&query_lower) {
+                matches.push(i + 1);
+            }
+        }
+
+        self.search_query = Some(query);
+        self.search_matches = matches;
+        self.current_match = 0;
+
+        if !self.search_matches.is_empty() {
+            self.scroll_to_line(self.search_matches[0]);
+        }
+    }
+
+    pub fn clear_search(&mut self) {
+        self.search_query = None;
+        self.search_matches.clear();
+        self.current_match = 0;
     }
 
     pub fn file_path(&self) -> &str {
@@ -112,7 +149,75 @@ impl Viewer {
         self.diff_state.as_ref()
     }
 
-    pub fn set_viewport_height(&mut self, height: usize) {
-        self.viewport_height = height;
+    pub fn current_hunk(&self) -> usize {
+        self.current_hunk
+    }
+
+    pub fn search_query(&self) -> Option<&str> {
+        self.search_query.as_deref()
+    }
+
+    pub fn search_matches(&self) -> &[usize] {
+        &self.search_matches
+    }
+
+    pub fn current_match(&self) -> usize {
+        self.current_match
+    }
+
+    fn next_diff(&mut self) {
+        if let Some(ref diff) = self.diff_state {
+            let starts = diff.hunk_start_lines();
+            if starts.is_empty() {
+                return;
+            }
+            if self.current_hunk + 1 < starts.len() {
+                self.current_hunk += 1;
+            }
+            self.scroll_to_line(starts[self.current_hunk] as usize);
+        }
+    }
+
+    fn prev_diff(&mut self) {
+        if let Some(ref diff) = self.diff_state {
+            let starts = diff.hunk_start_lines();
+            if starts.is_empty() {
+                return;
+            }
+            if self.current_hunk > 0 {
+                self.current_hunk -= 1;
+            }
+            self.scroll_to_line(starts[self.current_hunk] as usize);
+        }
+    }
+
+    fn next_match(&mut self) {
+        if self.search_matches.is_empty() {
+            return;
+        }
+        self.current_match = (self.current_match + 1) % self.search_matches.len();
+        self.scroll_to_line(self.search_matches[self.current_match]);
+    }
+
+    fn prev_match(&mut self) {
+        if self.search_matches.is_empty() {
+            return;
+        }
+        if self.current_match == 0 {
+            self.current_match = self.search_matches.len() - 1;
+        } else {
+            self.current_match -= 1;
+        }
+        self.scroll_to_line(self.search_matches[self.current_match]);
+    }
+
+    fn max_scroll(&self) -> usize {
+        self.total_lines.saturating_sub(self.viewport_height)
+    }
+
+    fn scroll_to_line(&mut self, lineno: usize) {
+        let target = lineno.saturating_sub(1);
+        let context_lines = self.viewport_height / 4;
+        self.scroll_offset = target.saturating_sub(context_lines).min(self.max_scroll());
     }
 }

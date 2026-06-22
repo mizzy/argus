@@ -83,6 +83,33 @@ pub fn compute_word_diff(old: &str, new: &str) -> (Vec<WordSpan>, Vec<WordSpan>)
     (old_spans, new_spans)
 }
 
+const MAX_CHANGED_RATIO: f64 = 0.7;
+
+pub fn compute_word_diff_if_useful(
+    old: &str,
+    new: &str,
+) -> Option<(Vec<WordSpan>, Vec<WordSpan>)> {
+    let (old_spans, new_spans) = compute_word_diff(old, new);
+
+    let non_ws = |s: &&WordSpan| !s.text.trim().is_empty();
+    let old_total: usize = old_spans.iter().filter(non_ws).map(|s| s.text.len()).sum();
+    let old_changed: usize = old_spans.iter().filter(|s| s.changed).filter(non_ws).map(|s| s.text.len()).sum();
+    let new_total: usize = new_spans.iter().filter(non_ws).map(|s| s.text.len()).sum();
+    let new_changed: usize = new_spans.iter().filter(|s| s.changed).filter(non_ws).map(|s| s.text.len()).sum();
+
+    let total = old_total + new_total;
+    if total == 0 {
+        return None;
+    }
+
+    let changed_ratio = (old_changed + new_changed) as f64 / total as f64;
+    if changed_ratio > MAX_CHANGED_RATIO {
+        return None;
+    }
+
+    Some((old_spans, new_spans))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,6 +225,29 @@ mod tests {
                 old, new, similarity(old, new)
             );
         }
+    }
+
+    #[test]
+    fn mostly_changed_word_diff_returns_none() {
+        let old = "            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;";
+        let new = "            ));";
+        let result = compute_word_diff_if_useful(old, new);
+        assert!(
+            result.is_none(),
+            "word diff should be None when most of the line changed, got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn useful_word_diff_returns_some() {
+        let old = "    pub dtype: String,";
+        let new = "    pub dtype: Dtype,";
+        let result = compute_word_diff_if_useful(old, new);
+        assert!(
+            result.is_some(),
+            "word diff should be Some for useful changes"
+        );
     }
 
     #[test]

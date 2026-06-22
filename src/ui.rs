@@ -119,9 +119,12 @@ fn build_display_lines<'a>(
         let is_search_hit = search_line_set.contains(&lineno);
 
         if is_addition {
-            if let Some(old_text) = word_diff_pairs.get(&lineno) {
+            let word_diff_result = word_diff_pairs.get(&lineno).and_then(|old_text| {
                 let add_text = addition_contents.get(&lineno).map(|s| s.as_str()).unwrap_or("");
-                let (_, new_spans) = word_diff::compute_word_diff(old_text, add_text);
+                let (_, new_spans) = word_diff::compute_word_diff_if_useful(old_text, add_text)?;
+                Some(new_spans)
+            });
+            if let Some(new_spans) = word_diff_result {
                 lines.push(make_word_diff_addition_line(lineno, &new_spans));
             } else {
                 let gutter = format!("{:>4} {} ", lineno, "+");
@@ -163,33 +166,28 @@ fn build_display_lines<'a>(
 
         if let Some(deleted) = deleted_map.get(&lineno) {
             for d in deleted {
-                let next_add_lineno = lineno + 1;
-                if let Some(paired_old) = word_diff_pairs.get(&next_add_lineno) {
-                    if paired_old == &d.content {
-                        let add_text = addition_contents
-                            .get(&next_add_lineno)
-                            .map(|s| s.as_str())
-                            .unwrap_or("");
-                        let (old_spans, _) =
-                            word_diff::compute_word_diff(&d.content, add_text);
-                        lines.push(make_word_diff_deleted_line(&old_spans));
-                        continue;
+                let word_diff_old = (|| {
+                    let next_add_lineno = lineno + 1;
+                    if let Some(paired_old) = word_diff_pairs.get(&next_add_lineno) {
+                        if paired_old == &d.content {
+                            let add_text = addition_contents.get(&next_add_lineno)?.as_str();
+                            let (old_spans, _) = word_diff::compute_word_diff_if_useful(&d.content, add_text)?;
+                            return Some(old_spans);
+                        }
                     }
-                }
-                if paired_del_contents.contains(&d.content) {
-                    let paired_add = word_diff_pairs.iter().find(|(_, v)| **v == d.content);
-                    if let Some((&add_lineno, _)) = paired_add {
-                        let add_text = addition_contents
-                            .get(&add_lineno)
-                            .map(|s| s.as_str())
-                            .unwrap_or("");
-                        let (old_spans, _) =
-                            word_diff::compute_word_diff(&d.content, add_text);
-                        lines.push(make_word_diff_deleted_line(&old_spans));
-                        continue;
+                    if paired_del_contents.contains(&d.content) {
+                        let (&add_lineno, _) = word_diff_pairs.iter().find(|(_, v)| **v == d.content)?;
+                        let add_text = addition_contents.get(&add_lineno)?.as_str();
+                        let (old_spans, _) = word_diff::compute_word_diff_if_useful(&d.content, add_text)?;
+                        return Some(old_spans);
                     }
+                    None
+                })();
+                if let Some(old_spans) = word_diff_old {
+                    lines.push(make_word_diff_deleted_line(&old_spans));
+                } else {
+                    lines.push(make_deleted_line(&d.content));
                 }
-                lines.push(make_deleted_line(&d.content));
             }
         }
     }

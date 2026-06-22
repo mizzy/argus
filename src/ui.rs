@@ -5,9 +5,12 @@ use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 use crate::viewer::Viewer;
+use crate::word_diff;
 
 const ADDITION_BG: Color = Color::Rgb(0, 50, 0);
+const ADDITION_HIGHLIGHT_BG: Color = Color::Rgb(0, 100, 0);
 const DELETION_BG: Color = Color::Rgb(50, 0, 0);
+const DELETION_HIGHLIGHT_BG: Color = Color::Rgb(140, 0, 0);
 const SEARCH_HIGHLIGHT_BG: Color = Color::Rgb(120, 100, 0);
 
 pub fn draw(frame: &mut Frame, area: Rect, viewer: &mut Viewer, search_input: Option<&str>) {
@@ -62,12 +65,20 @@ pub fn draw(frame: &mut Frame, area: Rect, viewer: &mut Viewer, search_input: Op
     }
 }
 
-fn build_display_lines<'a>(viewer: &Viewer) -> (Vec<Line<'a>>, std::collections::HashMap<usize, usize>) {
+fn build_display_lines<'a>(
+    viewer: &Viewer,
+) -> (Vec<Line<'a>>, std::collections::HashMap<usize, usize>) {
     let highlighted = viewer.highlighter().highlight(viewer.content());
 
     let addition_marks = viewer
         .diff_state()
         .map(|d| &d.addition_lines)
+        .cloned()
+        .unwrap_or_default();
+
+    let addition_contents = viewer
+        .diff_state()
+        .map(|d| &d.addition_contents)
         .cloned()
         .unwrap_or_default();
 
@@ -77,18 +88,16 @@ fn build_display_lines<'a>(viewer: &Viewer) -> (Vec<Line<'a>>, std::collections:
         .cloned()
         .unwrap_or_default();
 
-    let search_line_set: std::collections::HashSet<usize> = viewer
-        .search_matches()
-        .iter()
-        .copied()
-        .collect();
+    let search_line_set: std::collections::HashSet<usize> =
+        viewer.search_matches().iter().copied().collect();
 
     let mut lines: Vec<Line<'a>> = Vec::new();
-    let mut lineno_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut lineno_map: std::collections::HashMap<usize, usize> =
+        std::collections::HashMap::new();
 
     if let Some(deleted) = deleted_map.get(&0) {
         for d in deleted {
-            lines.push(make_deleted_line(&d.content));
+            lines.push(make_deleted_line(&d.content, None));
         }
     }
 
@@ -100,50 +109,83 @@ fn build_display_lines<'a>(viewer: &Viewer) -> (Vec<Line<'a>>, std::collections:
         let is_addition = addition_marks.contains_key(&lineno);
         let is_search_hit = search_line_set.contains(&lineno);
 
-        let (marker, marker_style) = if is_addition {
-            (
-                "+",
-                Style::default()
+        if is_addition {
+            let add_content = addition_contents.get(&lineno).map(|s| s.as_str());
+            let deleted_before = find_paired_deletions(lineno, &deleted_map);
+
+            if let (Some(add_text), Some(del_text)) = (add_content, deleted_before.as_deref()) {
+                let (_, new_spans) = word_diff::compute_word_diff(del_text, add_text);
+                let gutter = format!("{:>4} {} ", lineno, "+");
+                let gutter_style = Style::default()
                     .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            )
+                    .add_modifier(Modifier::BOLD);
+                let mut spans = vec![Span::styled(gutter, gutter_style)];
+                for ws in &new_spans {
+                    let bg = if ws.changed {
+                        ADDITION_HIGHLIGHT_BG
+                    } else {
+                        ADDITION_BG
+                    };
+                    spans.push(Span::styled(
+                        ws.text.clone(),
+                        Style::default().fg(Color::White).bg(bg),
+                    ));
+                }
+                lines.push(Line::from(spans));
+            } else {
+                let gutter = format!("{:>4} {} ", lineno, "+");
+                let gutter_style = Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD);
+                let mut spans = vec![Span::styled(gutter, gutter_style)];
+                let bg = if is_search_hit {
+                    SEARCH_HIGHLIGHT_BG
+                } else {
+                    ADDITION_BG
+                };
+                spans.extend(
+                    hl_line
+                        .spans
+                        .into_iter()
+                        .map(|s| Span::styled(s.content, s.style.bg(bg))),
+                );
+                lines.push(Line::from(spans));
+            }
         } else {
-            (" ", Style::default())
-        };
+            let gutter = format!("{:>4}   ", lineno);
+            let gutter_style = Style::default().fg(Color::DarkGray);
+            let mut spans = vec![Span::styled(gutter, gutter_style)];
 
-        let gutter = format!("{:>4} {} ", lineno, marker);
-        let gutter_style = if is_addition {
-            marker_style
-        } else {
-            Style::default().fg(Color::DarkGray)
-        };
+            if is_search_hit {
+                spans.extend(
+                    hl_line
+                        .spans
+                        .into_iter()
+                        .map(|s| Span::styled(s.content, s.style.bg(SEARCH_HIGHLIGHT_BG))),
+                );
+            } else {
+                spans.extend(hl_line.spans);
+            }
 
-        let mut spans = vec![Span::styled(gutter, gutter_style)];
-
-        let bg = if is_search_hit {
-            Some(SEARCH_HIGHLIGHT_BG)
-        } else if is_addition {
-            Some(ADDITION_BG)
-        } else {
-            None
-        };
-
-        if let Some(bg) = bg {
-            spans.extend(
-                hl_line
-                    .spans
-                    .into_iter()
-                    .map(|s| Span::styled(s.content, s.style.bg(bg))),
-            );
-        } else {
-            spans.extend(hl_line.spans);
+            lines.push(Line::from(spans));
         }
 
-        lines.push(Line::from(spans));
-
         if let Some(deleted) = deleted_map.get(&lineno) {
-            for d in deleted {
-                lines.push(make_deleted_line(&d.content));
+            let next_is_addition = addition_contents.get(&(lineno + 1));
+
+            for (di, d) in deleted.iter().enumerate() {
+                let paired_add = if di == 0 {
+                    next_is_addition.map(|s| s.as_str())
+                } else {
+                    None
+                };
+
+                if let Some(add_text) = paired_add {
+                    let (old_spans, _) = word_diff::compute_word_diff(&d.content, add_text);
+                    lines.push(make_word_diff_deleted_line(&old_spans));
+                } else {
+                    lines.push(make_deleted_line(&d.content, None));
+                }
             }
         }
     }
@@ -151,7 +193,20 @@ fn build_display_lines<'a>(viewer: &Viewer) -> (Vec<Line<'a>>, std::collections:
     (lines, lineno_map)
 }
 
-fn make_deleted_line(content: &str) -> Line<'static> {
+fn find_paired_deletions(
+    add_lineno: usize,
+    deleted_map: &std::collections::HashMap<usize, Vec<crate::diff::DeletedLine>>,
+) -> Option<String> {
+    let prev = add_lineno.checked_sub(1)?;
+    let deleted = deleted_map.get(&prev)?;
+    if deleted.len() == 1 {
+        Some(deleted[0].content.clone())
+    } else {
+        None
+    }
+}
+
+fn make_deleted_line(content: &str, _paired: Option<&str>) -> Line<'static> {
     let gutter = format!("{:>4} {} ", "", "-");
     Line::from(vec![
         Span::styled(
@@ -165,6 +220,30 @@ fn make_deleted_line(content: &str) -> Line<'static> {
             Style::default().fg(Color::Red).bg(DELETION_BG),
         ),
     ])
+}
+
+fn make_word_diff_deleted_line(old_spans: &[word_diff::WordSpan]) -> Line<'static> {
+    let gutter = format!("{:>4} {} ", "", "-");
+    let mut spans = vec![Span::styled(
+        gutter,
+        Style::default()
+            .fg(Color::Red)
+            .add_modifier(Modifier::BOLD),
+    )];
+
+    for ws in old_spans {
+        let bg = if ws.changed {
+            DELETION_HIGHLIGHT_BG
+        } else {
+            DELETION_BG
+        };
+        spans.push(Span::styled(
+            ws.text.clone(),
+            Style::default().fg(Color::Red).bg(bg),
+        ));
+    }
+
+    Line::from(spans)
 }
 
 fn build_status_line<'a>(viewer: &Viewer) -> Line<'a> {

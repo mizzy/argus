@@ -88,6 +88,15 @@ fn build_display_lines<'a>(
         .cloned()
         .unwrap_or_default();
 
+    let word_diff_pairs = viewer
+        .diff_state()
+        .map(|d| &d.word_diff_pairs)
+        .cloned()
+        .unwrap_or_default();
+
+    let paired_del_contents: std::collections::HashSet<String> =
+        word_diff_pairs.values().cloned().collect();
+
     let search_line_set: std::collections::HashSet<usize> =
         viewer.search_matches().iter().copied().collect();
 
@@ -97,7 +106,7 @@ fn build_display_lines<'a>(
 
     if let Some(deleted) = deleted_map.get(&0) {
         for d in deleted {
-            lines.push(make_deleted_line(&d.content, None));
+            lines.push(make_deleted_line(&d.content));
         }
     }
 
@@ -110,28 +119,10 @@ fn build_display_lines<'a>(
         let is_search_hit = search_line_set.contains(&lineno);
 
         if is_addition {
-            let add_content = addition_contents.get(&lineno).map(|s| s.as_str());
-            let deleted_before = find_paired_deletions(lineno, &deleted_map);
-
-            if let (Some(add_text), Some(del_text)) = (add_content, deleted_before.as_deref()) {
-                let (_, new_spans) = word_diff::compute_word_diff(del_text, add_text);
-                let gutter = format!("{:>4} {} ", lineno, "+");
-                let gutter_style = Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD);
-                let mut spans = vec![Span::styled(gutter, gutter_style)];
-                for ws in &new_spans {
-                    let bg = if ws.changed {
-                        ADDITION_HIGHLIGHT_BG
-                    } else {
-                        ADDITION_BG
-                    };
-                    spans.push(Span::styled(
-                        ws.text.clone(),
-                        Style::default().fg(Color::White).bg(bg),
-                    ));
-                }
-                lines.push(Line::from(spans));
+            if let Some(old_text) = word_diff_pairs.get(&lineno) {
+                let add_text = addition_contents.get(&lineno).map(|s| s.as_str()).unwrap_or("");
+                let (_, new_spans) = word_diff::compute_word_diff(old_text, add_text);
+                lines.push(make_word_diff_addition_line(lineno, &new_spans));
             } else {
                 let gutter = format!("{:>4} {} ", lineno, "+");
                 let gutter_style = Style::default()
@@ -171,21 +162,34 @@ fn build_display_lines<'a>(
         }
 
         if let Some(deleted) = deleted_map.get(&lineno) {
-            let next_is_addition = addition_contents.get(&(lineno + 1));
-
-            for (di, d) in deleted.iter().enumerate() {
-                let paired_add = if di == 0 {
-                    next_is_addition.map(|s| s.as_str())
-                } else {
-                    None
-                };
-
-                if let Some(add_text) = paired_add {
-                    let (old_spans, _) = word_diff::compute_word_diff(&d.content, add_text);
-                    lines.push(make_word_diff_deleted_line(&old_spans));
-                } else {
-                    lines.push(make_deleted_line(&d.content, None));
+            for d in deleted {
+                let next_add_lineno = lineno + 1;
+                if let Some(paired_old) = word_diff_pairs.get(&next_add_lineno) {
+                    if paired_old == &d.content {
+                        let add_text = addition_contents
+                            .get(&next_add_lineno)
+                            .map(|s| s.as_str())
+                            .unwrap_or("");
+                        let (old_spans, _) =
+                            word_diff::compute_word_diff(&d.content, add_text);
+                        lines.push(make_word_diff_deleted_line(&old_spans));
+                        continue;
+                    }
                 }
+                if paired_del_contents.contains(&d.content) {
+                    let paired_add = word_diff_pairs.iter().find(|(_, v)| **v == d.content);
+                    if let Some((&add_lineno, _)) = paired_add {
+                        let add_text = addition_contents
+                            .get(&add_lineno)
+                            .map(|s| s.as_str())
+                            .unwrap_or("");
+                        let (old_spans, _) =
+                            word_diff::compute_word_diff(&d.content, add_text);
+                        lines.push(make_word_diff_deleted_line(&old_spans));
+                        continue;
+                    }
+                }
+                lines.push(make_deleted_line(&d.content));
             }
         }
     }
@@ -193,20 +197,29 @@ fn build_display_lines<'a>(
     (lines, lineno_map)
 }
 
-fn find_paired_deletions(
-    add_lineno: usize,
-    deleted_map: &std::collections::HashMap<usize, Vec<crate::diff::DeletedLine>>,
-) -> Option<String> {
-    let prev = add_lineno.checked_sub(1)?;
-    let deleted = deleted_map.get(&prev)?;
-    if deleted.len() == 1 {
-        Some(deleted[0].content.clone())
-    } else {
-        None
+fn make_word_diff_addition_line(lineno: usize, new_spans: &[word_diff::WordSpan]) -> Line<'static> {
+    let gutter = format!("{:>4} {} ", lineno, "+");
+    let gutter_style = Style::default()
+        .fg(Color::Green)
+        .add_modifier(Modifier::BOLD);
+    let mut spans = vec![Span::styled(gutter, gutter_style)];
+
+    for ws in new_spans {
+        let bg = if ws.changed {
+            ADDITION_HIGHLIGHT_BG
+        } else {
+            ADDITION_BG
+        };
+        spans.push(Span::styled(
+            ws.text.clone(),
+            Style::default().fg(Color::White).bg(bg),
+        ));
     }
+
+    Line::from(spans)
 }
 
-fn make_deleted_line(content: &str, _paired: Option<&str>) -> Line<'static> {
+fn make_deleted_line(content: &str) -> Line<'static> {
     let gutter = format!("{:>4} {} ", "", "-");
     Line::from(vec![
         Span::styled(

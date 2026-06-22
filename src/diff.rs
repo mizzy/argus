@@ -17,7 +17,9 @@ pub struct DiffState {
     pub deleted_lines: HashMap<usize, Vec<DeletedLine>>,
     pub change_groups: Vec<usize>,
     pub addition_contents: HashMap<usize, String>,
+    pub word_diff_pairs: HashMap<usize, String>,
 }
+
 impl DiffState {
     pub fn load(file_path: &str, rev: Option<&str>) -> Result<Self> {
         let path = std::env::current_dir()?.join(file_path);
@@ -45,6 +47,10 @@ impl DiffState {
         let mut last_new_lineno: Option<u32> = None;
         let mut current_hunk_start: u32 = 1;
 
+        let mut pending_deletions: Vec<String> = Vec::new();
+        let mut pending_additions: Vec<(usize, String)> = Vec::new();
+        let mut blocks: Vec<(Vec<String>, Vec<(usize, String)>)> = Vec::new();
+
         diff.print(git2::DiffFormat::Patch, |_delta, hunk, line| {
             if let Some(hunk) = hunk {
                 current_hunk_start = hunk.new_start();
@@ -53,15 +59,22 @@ impl DiffState {
             match line.origin() {
                 '+' => {
                     if let Some(lineno) = line.new_lineno() {
-                        addition_lines.insert(lineno as usize, DiffLineKind::Addition);
                         let content = String::from_utf8_lossy(line.content())
                             .trim_end_matches('\n')
                             .to_string();
-                        addition_contents.insert(lineno as usize, content);
+                        addition_lines.insert(lineno as usize, DiffLineKind::Addition);
+                        addition_contents.insert(lineno as usize, content.clone());
+                        pending_additions.push((lineno as usize, content));
                         last_new_lineno = Some(lineno);
                     }
                 }
                 '-' => {
+                    if !pending_additions.is_empty() {
+                        blocks.push((
+                            std::mem::take(&mut pending_deletions),
+                            std::mem::take(&mut pending_additions),
+                        ));
+                    }
                     let content = String::from_utf8_lossy(line.content())
                         .trim_end_matches('\n')
                         .to_string();
@@ -73,11 +86,22 @@ impl DiffState {
                     deleted_lines
                         .entry(insert_after)
                         .or_default()
-                        .push(DeletedLine { content });
+                        .push(DeletedLine {
+                            content: content.clone(),
+                        });
+                    pending_deletions.push(content);
                 }
-                ' ' => {
-                    if let Some(lineno) = line.new_lineno() {
-                        last_new_lineno = Some(lineno);
+                ' ' | 'F' | 'H' => {
+                    if !pending_deletions.is_empty() || !pending_additions.is_empty() {
+                        blocks.push((
+                            std::mem::take(&mut pending_deletions),
+                            std::mem::take(&mut pending_additions),
+                        ));
+                    }
+                    if line.origin() == ' ' {
+                        if let Some(lineno) = line.new_lineno() {
+                            last_new_lineno = Some(lineno);
+                        }
                     }
                 }
                 _ => {}
@@ -85,6 +109,22 @@ impl DiffState {
 
             true
         })?;
+
+        if !pending_deletions.is_empty() || !pending_additions.is_empty() {
+            blocks.push((
+                std::mem::take(&mut pending_deletions),
+                std::mem::take(&mut pending_additions),
+            ));
+        }
+
+        let mut word_diff_pairs: HashMap<usize, String> = HashMap::new();
+        for (dels, adds) in &blocks {
+            let pair_count = dels.len().min(adds.len());
+            for i in 0..pair_count {
+                let (add_lineno, _) = &adds[i];
+                word_diff_pairs.insert(*add_lineno, dels[i].clone());
+            }
+        }
 
         if addition_lines.is_empty() && deleted_lines.is_empty() {
             anyhow::bail!("no diff");
@@ -97,6 +137,7 @@ impl DiffState {
             addition_contents,
             deleted_lines,
             change_groups,
+            word_diff_pairs,
         })
     }
 

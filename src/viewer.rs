@@ -18,6 +18,7 @@ pub struct Viewer {
     search_query: Option<String>,
     search_matches: Vec<usize>,
     current_match: usize,
+    lineno_to_display_row: std::collections::HashMap<usize, usize>,
 }
 
 impl Viewer {
@@ -36,6 +37,7 @@ impl Viewer {
             search_query: None,
             search_matches: Vec::new(),
             current_match: 0,
+            lineno_to_display_row: std::collections::HashMap::new(),
         })
     }
 
@@ -49,6 +51,10 @@ impl Viewer {
 
     pub fn update_total_display_lines(&mut self, count: usize) {
         self.total_lines = count;
+    }
+
+    pub fn update_lineno_to_display_row(&mut self, map: std::collections::HashMap<usize, usize>) {
+        self.lineno_to_display_row = map;
     }
 
     pub fn scroll_down(&mut self, n: usize) {
@@ -220,8 +226,12 @@ impl Viewer {
     }
 
     fn scroll_to_line(&mut self, lineno: usize) {
-        let target = lineno.saturating_sub(1);
+        let display_row = self
+            .lineno_to_display_row
+            .get(&lineno)
+            .copied()
+            .unwrap_or_else(|| lineno.saturating_sub(1));
         let context_lines = self.viewport_height / 4;
-        self.scroll_offset = target.saturating_sub(context_lines).min(self.max_scroll());
+        self.scroll_offset = display_row.saturating_sub(context_lines).min(self.max_scroll());
     }
 }

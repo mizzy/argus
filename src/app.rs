@@ -82,10 +82,10 @@ impl App {
                 KeyCode::Up | KeyCode::Char('k') => self.viewer.scroll_up(1),
                 KeyCode::Backspace => self.viewer.page_up(),
                 KeyCode::PageDown | KeyCode::Char(' ') => self.viewer.page_down(),
-                KeyCode::PageUp => self.viewer.page_up(),
                 KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     self.viewer.page_up();
                 }
+                KeyCode::PageUp | KeyCode::Char('b') => self.viewer.page_up(),
                 KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     self.viewer.page_down();
                 }
@@ -149,5 +149,23 @@ mod tests {
         app.handle_key(make_key(KeyCode::Backspace, KeyModifiers::NONE));
 
         assert!(app.viewer.scroll_offset() < offset_after_page_down);
+    }
+
+    #[test]
+    fn b_pages_up() {
+        let mut app = create_test_app();
+        app.viewer.update_viewport_height(10);
+        app.handle_key(make_key(KeyCode::Char(' '), KeyModifiers::NONE));
+        app.handle_key(make_key(KeyCode::Char(' '), KeyModifiers::NONE));
+        let before = app.viewer.scroll_offset();
+
+        app.handle_key(make_key(KeyCode::Char('b'), KeyModifiers::NONE));
+
+        assert!(
+            app.viewer.scroll_offset() < before,
+            "b should page up: before={} after={}",
+            before,
+            app.viewer.scroll_offset()
+        );
     }
 }

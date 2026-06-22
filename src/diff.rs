@@ -126,16 +126,12 @@ impl DiffState {
                     .context("failed to compute diff")
             }
         } else {
-            let commit = repo
-                .revparse_single(rev_spec)?
-                .peel_to_commit()
-                .context("revision is not a commit")?;
-            let tree = commit.tree()?;
-            let parent_tree = commit
-                .parent(0)
-                .ok()
-                .and_then(|p| p.tree().ok());
-            repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(opts))
+            let from_tree = Self::resolve_tree(repo, rev_spec)?;
+            let head_tree = repo
+                .head()?
+                .peel_to_tree()
+                .context("HEAD is not a valid tree")?;
+            repo.diff_tree_to_tree(Some(&from_tree), Some(&head_tree), Some(opts))
                 .context("failed to compute diff")
         }
     }

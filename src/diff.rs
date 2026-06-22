@@ -21,7 +21,6 @@ pub struct DiffState {
     pub hunks: Vec<DiffHunk>,
     pub addition_lines: HashMap<usize, DiffLineKind>,
     pub deleted_lines: HashMap<usize, Vec<DeletedLine>>,
-    pub is_new_file: bool,
 }
 
 impl DiffState {
@@ -44,19 +43,6 @@ impl DiffState {
         } else {
             Self::diff_workdir(&repo, &mut opts)?
         };
-
-        let is_new_file = diff.deltas().any(|d| {
-            matches!(d.status(), git2::Delta::Added | git2::Delta::Untracked)
-        });
-
-        if is_new_file {
-            return Ok(Self {
-                hunks: Vec::new(),
-                addition_lines: HashMap::new(),
-                deleted_lines: HashMap::new(),
-                is_new_file: true,
-            });
-        }
 
         let mut hunks: Vec<DiffHunk> = Vec::new();
         let mut addition_lines: HashMap<usize, DiffLineKind> = HashMap::new();
@@ -118,7 +104,6 @@ impl DiffState {
             hunks,
             addition_lines,
             deleted_lines,
-            is_new_file: false,
         })
     }
 

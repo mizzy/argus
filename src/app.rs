@@ -18,9 +18,9 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(file: String) -> Result<Self> {
+    pub fn new(file: String, rev: Option<String>) -> Result<Self> {
         let highlighter = Highlighter::new(&file)?;
-        let diff_state = DiffState::load(&file).ok();
+        let diff_state = DiffState::load(&file, rev.as_deref()).ok();
         let viewer = Viewer::new(file, highlighter, diff_state)?;
 
         Ok(Self {

@@ -20,9 +20,19 @@ cargo install --path .
 
 ```
 argus <file>
+argus --rev HEAD~1 <file>
+argus --rev HEAD~3..HEAD <file>
+argus --rev abc123..def456 <file>
 ```
 
 If the file has uncommitted git changes (staged or unstaged), diff regions are automatically highlighted.
+
+With `--rev`, you can view diffs from committed changes:
+
+- `--rev HEAD~1` — diff introduced by the previous commit
+- `--rev HEAD~3..HEAD` — diff across a range of commits
+- `--rev abc123..` — from a commit to HEAD
+- `--rev abc123..def456` — between two specific commits
 
 ## Keybindings
 

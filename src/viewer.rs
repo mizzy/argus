@@ -47,6 +47,10 @@ impl Viewer {
         self.viewport_height = height;
     }
 
+    pub fn update_total_display_lines(&mut self, count: usize) {
+        self.total_lines = count;
+    }
+
     pub fn scroll_down(&mut self, n: usize) {
         let max = self.max_scroll();
         self.scroll_offset = (self.scroll_offset + n).min(max);

@@ -181,9 +181,17 @@ impl Viewer {
             if starts.is_empty() {
                 return;
             }
-            if self.current_hunk + 1 < starts.len() {
-                self.current_hunk += 1;
-            }
+            let current_line = self.scroll_offset + 1;
+            let next_idx = starts.iter().position(|s| {
+                let s = *s as usize;
+                let display_row = self
+                    .lineno_to_display_row
+                    .get(&s)
+                    .copied()
+                    .unwrap_or(s);
+                display_row > current_line
+            });
+            self.current_hunk = next_idx.unwrap_or(starts.len() - 1);
             self.scroll_to_line(starts[self.current_hunk] as usize);
         }
     }
@@ -194,9 +202,17 @@ impl Viewer {
             if starts.is_empty() {
                 return;
             }
-            if self.current_hunk > 0 {
-                self.current_hunk -= 1;
-            }
+            let current_line = self.scroll_offset;
+            let prev_idx = starts.iter().rposition(|s| {
+                let s = *s as usize;
+                let display_row = self
+                    .lineno_to_display_row
+                    .get(&s)
+                    .copied()
+                    .unwrap_or(s);
+                display_row < current_line
+            });
+            self.current_hunk = prev_idx.unwrap_or(0);
             self.scroll_to_line(starts[self.current_hunk] as usize);
         }
     }

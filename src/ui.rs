@@ -90,9 +90,15 @@ pub fn draw(frame: &mut Frame, area: Rect, viewer: &mut Viewer, search_input: Op
         })
         .collect();
 
+    let title = if viewer.diff_state().is_some_and(|d| d.is_new_file) {
+        format!("{} [new]", viewer.file_path())
+    } else {
+        viewer.file_path().to_string()
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(viewer.file_path().to_string());
+        .title(title);
 
     let paragraph = Paragraph::new(visible).block(block);
     frame.render_widget(paragraph, content_area);

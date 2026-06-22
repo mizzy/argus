@@ -40,14 +40,22 @@ impl DiffState {
             Self::diff_workdir(&repo, &mut opts)?
         };
 
+        let is_new_file = diff.deltas().any(|d| {
+            matches!(d.status(), git2::Delta::Added | git2::Delta::Untracked)
+        });
+
+        if is_new_file {
+            return Ok(Self {
+                hunks: Vec::new(),
+                line_marks: HashMap::new(),
+                is_new_file: true,
+            });
+        }
+
         let mut hunks: Vec<DiffHunk> = Vec::new();
         let mut line_marks: HashMap<usize, DiffLineKind> = HashMap::new();
-        let mut is_new_file = false;
 
-        diff.print(git2::DiffFormat::Patch, |delta, hunk, line| {
-            if delta.status() == git2::Delta::Added {
-                is_new_file = true;
-            }
+        diff.print(git2::DiffFormat::Patch, |_delta, hunk, line| {
             if let Some(hunk) = hunk {
                 let new_start = hunk.new_start();
                 if hunks.last().is_none_or(|h| h.new_start != new_start) {
@@ -77,14 +85,6 @@ impl DiffState {
                 .iter()
                 .any(|(&lineno, _)| lineno >= h.new_start as usize)
         });
-
-        if is_new_file {
-            return Ok(Self {
-                hunks: Vec::new(),
-                line_marks: HashMap::new(),
-                is_new_file: true,
-            });
-        }
 
         if hunks.is_empty() && line_marks.is_empty() {
             anyhow::bail!("no diff");

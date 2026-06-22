@@ -8,19 +8,14 @@ pub enum DiffLineKind {
 }
 
 #[derive(Debug, Clone)]
-pub struct DiffHunk {
-    pub new_start: u32,
-}
-
-#[derive(Debug, Clone)]
 pub struct DeletedLine {
     pub content: String,
 }
 
 pub struct DiffState {
-    pub hunks: Vec<DiffHunk>,
     pub addition_lines: HashMap<usize, DiffLineKind>,
     pub deleted_lines: HashMap<usize, Vec<DeletedLine>>,
+    pub change_groups: Vec<usize>,
 }
 
 impl DiffState {
@@ -44,17 +39,14 @@ impl DiffState {
             Self::diff_workdir(&repo, &mut opts)?
         };
 
-        let mut hunks: Vec<DiffHunk> = Vec::new();
         let mut addition_lines: HashMap<usize, DiffLineKind> = HashMap::new();
         let mut deleted_lines: HashMap<usize, Vec<DeletedLine>> = HashMap::new();
         let mut last_new_lineno: Option<u32> = None;
+        let mut current_hunk_start: u32 = 1;
 
         diff.print(git2::DiffFormat::Patch, |_delta, hunk, line| {
             if let Some(hunk) = hunk {
-                let new_start = hunk.new_start();
-                if hunks.last().is_none_or(|h| h.new_start != new_start) {
-                    hunks.push(DiffHunk { new_start });
-                }
+                current_hunk_start = hunk.new_start();
             }
 
             match line.origin() {
@@ -71,8 +63,7 @@ impl DiffState {
                     let insert_after = if let Some(prev) = last_new_lineno {
                         prev as usize
                     } else {
-                        let hunk_start = hunks.last().map(|h| h.new_start).unwrap_or(1);
-                        (hunk_start as usize).saturating_sub(1)
+                        (current_hunk_start as usize).saturating_sub(1)
                     };
                     deleted_lines
                         .entry(insert_after)
@@ -90,20 +81,16 @@ impl DiffState {
             true
         })?;
 
-        hunks.retain(|h| {
-            let start = h.new_start as usize;
-            addition_lines.keys().any(|&k| k >= start)
-                || deleted_lines.keys().any(|&k| k >= start)
-        });
-
-        if hunks.is_empty() && addition_lines.is_empty() && deleted_lines.is_empty() {
+        if addition_lines.is_empty() && deleted_lines.is_empty() {
             anyhow::bail!("no diff");
         }
 
+        let change_groups = Self::compute_change_groups(&addition_lines, &deleted_lines);
+
         Ok(Self {
-            hunks,
             addition_lines,
             deleted_lines,
+            change_groups,
         })
     }
 
@@ -152,7 +139,27 @@ impl DiffState {
             .context("revision is not a valid tree")
     }
 
-    pub fn hunk_start_lines(&self) -> Vec<u32> {
-        self.hunks.iter().map(|h| h.new_start).collect()
+    fn compute_change_groups(
+        addition_lines: &HashMap<usize, DiffLineKind>,
+        deleted_lines: &HashMap<usize, Vec<DeletedLine>>,
+    ) -> Vec<usize> {
+        let mut changed: Vec<usize> = addition_lines.keys().copied().collect();
+        for &lineno in deleted_lines.keys() {
+            changed.push(lineno);
+        }
+        changed.sort();
+        changed.dedup();
+
+        let mut groups = Vec::new();
+        let mut prev: Option<usize> = None;
+        for lineno in changed {
+            match prev {
+                None => groups.push(lineno),
+                Some(p) if lineno > p + 1 => groups.push(lineno),
+                _ => {}
+            }
+            prev = Some(lineno);
+        }
+        groups
     }
 }

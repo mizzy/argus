@@ -209,7 +209,6 @@ fn make_word_diff_addition_line(lineno: usize, new_spans: &[word_diff::WordSpan]
             Style::default()
                 .fg(Color::White)
                 .bg(ADDITION_HIGHLIGHT_BG)
-                .add_modifier(Modifier::UNDERLINED)
         } else {
             Style::default().fg(Color::White).bg(ADDITION_BG)
         };
@@ -249,7 +248,6 @@ fn make_word_diff_deleted_line(old_spans: &[word_diff::WordSpan]) -> Line<'stati
             Style::default()
                 .fg(Color::White)
                 .bg(DELETION_HIGHLIGHT_BG)
-                .add_modifier(Modifier::UNDERLINED)
         } else {
             Style::default().fg(Color::White).bg(DELETION_BG)
         };

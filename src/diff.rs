@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::word_diff;
 
-const WORD_DIFF_SIMILARITY_THRESHOLD: f64 = 0.4;
+const WORD_DIFF_SIMILARITY_THRESHOLD: f64 = 0.5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiffLineKind {

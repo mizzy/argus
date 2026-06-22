@@ -85,17 +85,24 @@ pub fn compute_word_diff(old: &str, new: &str) -> (Vec<WordSpan>, Vec<WordSpan>)
 
 const MAX_CHANGED_RATIO: f64 = 0.4;
 
-pub fn compute_word_diff_if_useful(
-    old: &str,
-    new: &str,
-) -> Option<(Vec<WordSpan>, Vec<WordSpan>)> {
+pub fn compute_word_diff_if_useful(old: &str, new: &str) -> Option<(Vec<WordSpan>, Vec<WordSpan>)> {
     let (old_spans, new_spans) = compute_word_diff(old, new);
 
     let non_ws = |s: &&WordSpan| !s.text.trim().is_empty();
     let old_total: usize = old_spans.iter().filter(non_ws).map(|s| s.text.len()).sum();
-    let old_changed: usize = old_spans.iter().filter(|s| s.changed).filter(non_ws).map(|s| s.text.len()).sum();
+    let old_changed: usize = old_spans
+        .iter()
+        .filter(|s| s.changed)
+        .filter(non_ws)
+        .map(|s| s.text.len())
+        .sum();
     let new_total: usize = new_spans.iter().filter(non_ws).map(|s| s.text.len()).sum();
-    let new_changed: usize = new_spans.iter().filter(|s| s.changed).filter(non_ws).map(|s| s.text.len()).sum();
+    let new_changed: usize = new_spans
+        .iter()
+        .filter(|s| s.changed)
+        .filter(non_ws)
+        .map(|s| s.text.len())
+        .sum();
 
     let total = old_total + new_total;
     if total == 0 {
@@ -107,8 +114,8 @@ pub fn compute_word_diff_if_useful(
         return None;
     }
 
-    let max_unchanged_run = longest_unchanged_run(&old_spans)
-        .max(longest_unchanged_run(&new_spans));
+    let max_unchanged_run =
+        longest_unchanged_run(&old_spans).max(longest_unchanged_run(&new_spans));
     if max_unchanged_run < 3 {
         return None;
     }
@@ -245,7 +252,9 @@ mod tests {
             assert!(
                 similarity(old, new) < 0.6,
                 "lines should have low similarity (<0.6): old={:?} new={:?} ratio={}",
-                old, new, similarity(old, new)
+                old,
+                new,
+                similarity(old, new)
             );
         }
     }
@@ -272,7 +281,9 @@ mod tests {
             assert!(
                 result.is_none(),
                 "word diff should be None when most of the line changed: old={:?} new={:?} sim={}",
-                old, new, similarity(old, new)
+                old,
+                new,
+                similarity(old, new)
             );
         }
     }
@@ -291,21 +302,17 @@ mod tests {
     #[test]
     fn similar_lines_should_be_word_diffed() {
         let cases = vec![
-            (
-                "use std::io::{self, Read};",
-                "use std::io;",
-            ),
-            (
-                "    pub dtype: String,",
-                "    pub dtype: Dtype,",
-            ),
+            ("use std::io::{self, Read};", "use std::io;"),
+            ("    pub dtype: String,", "    pub dtype: Dtype,"),
         ];
 
         for (old, new) in &cases {
             assert!(
                 similarity(old, new) >= 0.6,
                 "lines should have high similarity (>=0.6): old={:?} new={:?} ratio={}",
-                old, new, similarity(old, new)
+                old,
+                new,
+                similarity(old, new)
             );
         }
     }

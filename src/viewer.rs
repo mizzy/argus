@@ -177,24 +177,24 @@ impl Viewer {
 
     fn next_diff(&mut self) {
         if let Some(ref diff) = self.diff_state {
-            let starts = diff.hunk_start_lines();
-            if starts.is_empty() {
+            let groups = &diff.change_groups;
+            if groups.is_empty() {
                 return;
             }
             let next = match self.current_hunk {
                 None => 0,
-                Some(i) if i + 1 < starts.len() => i + 1,
+                Some(i) if i + 1 < groups.len() => i + 1,
                 Some(i) => i,
             };
             self.current_hunk = Some(next);
-            self.scroll_to_line(starts[next] as usize);
+            self.scroll_to_line(groups[next]);
         }
     }
 
     fn prev_diff(&mut self) {
         if let Some(ref diff) = self.diff_state {
-            let starts = diff.hunk_start_lines();
-            if starts.is_empty() {
+            let groups = &diff.change_groups;
+            if groups.is_empty() {
                 return;
             }
             let prev = match self.current_hunk {
@@ -203,7 +203,7 @@ impl Viewer {
                 Some(i) => i,
             };
             self.current_hunk = Some(prev);
-            self.scroll_to_line(starts[prev] as usize);
+            self.scroll_to_line(groups[prev]);
         }
     }
 

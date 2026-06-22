@@ -181,12 +181,12 @@ fn build_status_line<'a>(viewer: &Viewer) -> Line<'a> {
     ];
 
     if let Some(diff) = viewer.diff_state() {
-        let hunk_count = diff.hunks.len();
-        if hunk_count > 0 {
+        let group_count = diff.change_groups.len();
+        if group_count > 0 {
             parts.push(format!(
                 "diff:{}/{}",
                 viewer.current_hunk() + 1,
-                hunk_count
+                group_count
             ));
         }
     }

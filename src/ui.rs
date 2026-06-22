@@ -94,9 +94,6 @@ fn build_display_lines<'a>(
         .cloned()
         .unwrap_or_default();
 
-    let paired_del_contents: std::collections::HashSet<String> =
-        word_diff_pairs.values().cloned().collect();
-
     let search_line_set: std::collections::HashSet<usize> =
         viewer.search_matches().iter().copied().collect();
 
@@ -168,26 +165,12 @@ fn build_display_lines<'a>(
 
         if let Some(deleted) = deleted_map.get(&lineno) {
             for d in deleted {
-                let word_diff_old = (|| {
-                    let next_add_lineno = lineno + 1;
-                    if let Some(paired_old) = word_diff_pairs.get(&next_add_lineno)
-                        && paired_old == &d.content
-                    {
-                        let add_text = addition_contents.get(&next_add_lineno)?.as_str();
-                        let (old_spans, _) =
-                            word_diff::compute_word_diff_if_useful(&d.content, add_text)?;
-                        return Some(old_spans);
-                    }
-                    if paired_del_contents.contains(&d.content) {
-                        let (&add_lineno, _) =
-                            word_diff_pairs.iter().find(|(_, v)| **v == d.content)?;
-                        let add_text = addition_contents.get(&add_lineno)?.as_str();
-                        let (old_spans, _) =
-                            word_diff::compute_word_diff_if_useful(&d.content, add_text)?;
-                        return Some(old_spans);
-                    }
-                    None
-                })();
+                let word_diff_old = resolve_deleted_line_word_diff(
+                    &d.content,
+                    lineno,
+                    &word_diff_pairs,
+                    &addition_contents,
+                );
                 if let Some(old_spans) = word_diff_old {
                     lines.push(make_word_diff_deleted_line(&old_spans));
                 } else {
@@ -198,6 +181,22 @@ fn build_display_lines<'a>(
     }
 
     (lines, lineno_map)
+}
+
+fn resolve_deleted_line_word_diff(
+    del_content: &str,
+    lineno: usize,
+    word_diff_pairs: &std::collections::HashMap<usize, String>,
+    addition_contents: &std::collections::HashMap<usize, String>,
+) -> Option<Vec<word_diff::WordSpan>> {
+    let next_add_lineno = lineno + 1;
+    let paired_old = word_diff_pairs.get(&next_add_lineno)?;
+    if paired_old != del_content {
+        return None;
+    }
+    let add_text = addition_contents.get(&next_add_lineno)?;
+    let (old_spans, _) = word_diff::compute_word_diff_if_useful(del_content, add_text)?;
+    Some(old_spans)
 }
 
 fn make_word_diff_addition_line(lineno: usize, new_spans: &[word_diff::WordSpan]) -> Line<'static> {
@@ -301,4 +300,77 @@ fn build_status_line<'a>(viewer: &Viewer) -> Line<'a> {
             .bg(Color::DarkGray)
             .add_modifier(Modifier::BOLD),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn unpaired_deletion_is_not_word_diffed() {
+        // Scenario from actual bug: "let file = create_test_safetensors();" appears
+        // as a deletion at two different locations. Only one has a matching addition
+        // (at L342). The other (at L178) should NOT get word diff.
+        let mut word_diff_pairs = HashMap::new();
+        // L342's pair: del="let file = create_test_safetensors();" add="let file = create_test_safetensors("
+        word_diff_pairs.insert(
+            342,
+            "        let file = create_test_safetensors();".to_string(),
+        );
+
+        let mut addition_contents = HashMap::new();
+        addition_contents.insert(
+            342,
+            "        let file = create_test_safetensors(".to_string(),
+        );
+
+        // Deletion at L178: same text but no pair at L179
+        let result = resolve_deleted_line_word_diff(
+            "        let file = create_test_safetensors();",
+            178,
+            &word_diff_pairs,
+            &addition_contents,
+        );
+
+        assert!(
+            result.is_none(),
+            "deletion at L178 should NOT be word-diffed — it has no pair at L179, \
+             but the old code's content-based fallback would match it to L342's pair"
+        );
+    }
+
+    #[test]
+    fn paired_deletion_is_word_diffed() {
+        let mut word_diff_pairs = HashMap::new();
+        word_diff_pairs.insert(26, "    pub dtype: String,".to_string());
+
+        let mut addition_contents = HashMap::new();
+        addition_contents.insert(26, "    pub dtype: Dtype,".to_string());
+
+        // Deletion at L25: paired with addition at L26
+        let result = resolve_deleted_line_word_diff(
+            "    pub dtype: String,",
+            25,
+            &word_diff_pairs,
+            &addition_contents,
+        );
+
+        assert!(
+            result.is_some(),
+            "deletion at L25 should be word-diffed — it has a matching pair at L26"
+        );
+
+        let spans = result.unwrap();
+        let changed_text: String = spans
+            .iter()
+            .filter(|s| s.changed)
+            .map(|s| s.text.as_str())
+            .collect();
+        assert!(
+            changed_text.contains("String"),
+            "changed portion should contain 'String', got {:?}",
+            changed_text
+        );
+    }
 }

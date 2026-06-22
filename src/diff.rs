@@ -6,6 +6,8 @@ use crate::word_diff;
 
 const WORD_DIFF_SIMILARITY_THRESHOLD: f64 = 0.6;
 
+type DiffBlock = (Vec<String>, Vec<(usize, String)>);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiffLineKind {
     Addition,
@@ -53,7 +55,6 @@ impl DiffState {
 
         let mut pending_deletions: Vec<String> = Vec::new();
         let mut pending_additions: Vec<(usize, String)> = Vec::new();
-        type DiffBlock = (Vec<String>, Vec<(usize, String)>);
         let mut blocks: Vec<DiffBlock> = Vec::new();
 
         diff.print(git2::DiffFormat::Patch, |_delta, hunk, line| {
@@ -122,18 +123,7 @@ impl DiffState {
             ));
         }
 
-        let mut word_diff_pairs: HashMap<usize, String> = HashMap::new();
-        for (dels, adds) in &blocks {
-            let pair_count = dels.len().min(adds.len());
-            for i in 0..pair_count {
-                let (add_lineno, add_text) = &adds[i];
-                let del_text = &dels[i];
-                if word_diff::similarity(del_text, add_text) < WORD_DIFF_SIMILARITY_THRESHOLD {
-                    continue;
-                }
-                word_diff_pairs.insert(*add_lineno, del_text.clone());
-            }
-        }
+        let word_diff_pairs = Self::build_word_diff_pairs(&blocks);
 
         if addition_lines.is_empty() && deleted_lines.is_empty() {
             anyhow::bail!("no diff");
@@ -192,6 +182,22 @@ impl DiffState {
             .context("revision is not a valid tree")
     }
 
+    fn build_word_diff_pairs(blocks: &[DiffBlock]) -> HashMap<usize, String> {
+        let mut pairs = HashMap::new();
+        for (dels, adds) in blocks {
+            let pair_count = dels.len().min(adds.len());
+            for i in 0..pair_count {
+                let (add_lineno, add_text) = &adds[i];
+                let del_text = &dels[i];
+                if word_diff::similarity(del_text, add_text) < WORD_DIFF_SIMILARITY_THRESHOLD {
+                    continue;
+                }
+                pairs.insert(*add_lineno, del_text.clone());
+            }
+        }
+        pairs
+    }
+
     fn compute_change_groups(
         addition_lines: &HashMap<usize, DiffLineKind>,
         deleted_lines: &HashMap<usize, Vec<DeletedLine>>,
@@ -214,5 +220,106 @@ impl DiffState {
             prev = Some(lineno);
         }
         groups
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn two_deletions_one_addition_does_not_pair_unrelated_lines() {
+        let blocks = vec![(
+            vec![
+                "        // Write dummy tensor data (64 bytes = 16 f32 values)".to_string(),
+                "        file.write_all(&[0u8; 64]).unwrap();".to_string(),
+            ],
+            vec![(173, "        file.write_all(data).unwrap();".to_string())],
+        )];
+
+        let pairs = DiffState::build_word_diff_pairs(&blocks);
+
+        assert!(
+            !pairs.contains_key(&173),
+            "comment line should not be paired with code line, but got pair: {:?}",
+            pairs.get(&173)
+        );
+
+        assert!(
+            pairs.is_empty(),
+            "no pairs should be created since dels[0] (comment) is dissimilar to adds[0] (code), pairs={:?}",
+            pairs
+        );
+    }
+
+    #[test]
+    fn duplicate_deletion_text_across_blocks_does_not_create_false_pairs() {
+        // Block 1: fn name change (paired correctly)
+        // Block 2: same "let file = create_test_safetensors();" appears but should
+        // only pair within its own block, not with block 1's identical deletion
+        let blocks = vec![
+            (
+                vec![
+                    "    fn parse_header_returns_tensor_info() {".to_string(),
+                    "        let file = create_test_safetensors();".to_string(),
+                ],
+                vec![
+                    (
+                        179,
+                        "    fn dtype_element_size_returns_byte_widths() {".to_string(),
+                    ),
+                    (
+                        180,
+                        "        assert_eq!(Dtype::F32.element_size(), 4);".to_string(),
+                    ),
+                ],
+            ),
+            (
+                vec![
+                    "    fn parse_header_skips_metadata() {".to_string(),
+                    "        let file = create_test_safetensors();".to_string(),
+                ],
+                vec![
+                    (341, "    fn tensors_returns_all_metadata() {".to_string()),
+                    (
+                        342,
+                        "        let file = create_test_safetensors(".to_string(),
+                    ),
+                ],
+            ),
+        ];
+
+        let pairs = DiffState::build_word_diff_pairs(&blocks);
+
+        // Block 2 pair: "let file = create_test_safetensors();" -> "let file = create_test_safetensors("
+        // This is the only pair that should exist for L342
+        if let Some(del_text) = pairs.get(&342) {
+            assert_eq!(
+                del_text, "        let file = create_test_safetensors();",
+                "L342 should pair with its own block's deletion"
+            );
+        }
+
+        // Block 1's "let file = create_test_safetensors();" should NOT pair with
+        // block 2's addition at L342 — they are in different blocks
+        // The word_diff_pairs map only creates pairs within each block, so this is
+        // already correct in build_word_diff_pairs. The real bug is in ui.rs's
+        // paired_del_contents fallback which does cross-block matching by content.
+    }
+
+    #[test]
+    fn matching_lines_are_paired() {
+        let blocks = vec![(
+            vec!["    pub dtype: String,".to_string()],
+            vec![(26, "    pub dtype: Dtype,".to_string())],
+        )];
+
+        let pairs = DiffState::build_word_diff_pairs(&blocks);
+
+        assert_eq!(
+            pairs.get(&26),
+            Some(&"    pub dtype: String,".to_string()),
+            "similar lines should be paired"
+        );
     }
 }

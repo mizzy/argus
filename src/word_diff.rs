@@ -6,6 +6,11 @@ pub struct WordSpan {
     pub changed: bool,
 }
 
+pub fn similarity(old: &str, new: &str) -> f64 {
+    let diff = TextDiff::configure().diff_words(old, new);
+    diff.ratio() as f64
+}
+
 pub fn compute_word_diff(old: &str, new: &str) -> (Vec<WordSpan>, Vec<WordSpan>) {
     let diff = TextDiff::configure().diff_words(old, new);
 

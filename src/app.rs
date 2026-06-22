@@ -43,7 +43,8 @@ impl App {
             Mode::Search(input) => Some(input.as_str()),
             Mode::Normal => None,
         };
-        self.viewer.draw_with_search_input(frame, frame.area(), search_input);
+        self.viewer
+            .draw_with_search_input(frame, frame.area(), search_input);
     }
 
     fn handle_events(&mut self) -> Result<()> {

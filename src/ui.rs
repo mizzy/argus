@@ -1,8 +1,8 @@
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
-use ratatui::Frame;
 
 use crate::viewer::Viewer;
 use crate::word_diff;
@@ -101,8 +101,7 @@ fn build_display_lines<'a>(
         viewer.search_matches().iter().copied().collect();
 
     let mut lines: Vec<Line<'a>> = Vec::new();
-    let mut lineno_map: std::collections::HashMap<usize, usize> =
-        std::collections::HashMap::new();
+    let mut lineno_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
 
     if let Some(deleted) = deleted_map.get(&0) {
         for d in deleted {
@@ -120,7 +119,10 @@ fn build_display_lines<'a>(
 
         if is_addition {
             let word_diff_result = word_diff_pairs.get(&lineno).and_then(|old_text| {
-                let add_text = addition_contents.get(&lineno).map(|s| s.as_str()).unwrap_or("");
+                let add_text = addition_contents
+                    .get(&lineno)
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
                 let (_, new_spans) = word_diff::compute_word_diff_if_useful(old_text, add_text)?;
                 Some(new_spans)
             });
@@ -168,17 +170,20 @@ fn build_display_lines<'a>(
             for d in deleted {
                 let word_diff_old = (|| {
                     let next_add_lineno = lineno + 1;
-                    if let Some(paired_old) = word_diff_pairs.get(&next_add_lineno) {
-                        if paired_old == &d.content {
-                            let add_text = addition_contents.get(&next_add_lineno)?.as_str();
-                            let (old_spans, _) = word_diff::compute_word_diff_if_useful(&d.content, add_text)?;
-                            return Some(old_spans);
-                        }
+                    if let Some(paired_old) = word_diff_pairs.get(&next_add_lineno)
+                        && paired_old == &d.content
+                    {
+                        let add_text = addition_contents.get(&next_add_lineno)?.as_str();
+                        let (old_spans, _) =
+                            word_diff::compute_word_diff_if_useful(&d.content, add_text)?;
+                        return Some(old_spans);
                     }
                     if paired_del_contents.contains(&d.content) {
-                        let (&add_lineno, _) = word_diff_pairs.iter().find(|(_, v)| **v == d.content)?;
+                        let (&add_lineno, _) =
+                            word_diff_pairs.iter().find(|(_, v)| **v == d.content)?;
                         let add_text = addition_contents.get(&add_lineno)?.as_str();
-                        let (old_spans, _) = word_diff::compute_word_diff_if_useful(&d.content, add_text)?;
+                        let (old_spans, _) =
+                            word_diff::compute_word_diff_if_useful(&d.content, add_text)?;
                         return Some(old_spans);
                     }
                     None
@@ -204,9 +209,7 @@ fn make_word_diff_addition_line(lineno: usize, new_spans: &[word_diff::WordSpan]
 
     for ws in new_spans {
         let style = if ws.changed {
-            Style::default()
-                .fg(Color::White)
-                .bg(ADDITION_HIGHLIGHT_BG)
+            Style::default().fg(Color::White).bg(ADDITION_HIGHLIGHT_BG)
         } else {
             Style::default().fg(Color::White).bg(ADDITION_BG)
         };
@@ -221,9 +224,7 @@ fn make_deleted_line(content: &str) -> Line<'static> {
     Line::from(vec![
         Span::styled(
             gutter,
-            Style::default()
-                .fg(Color::Red)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             content.to_string(),
@@ -236,16 +237,12 @@ fn make_word_diff_deleted_line(old_spans: &[word_diff::WordSpan]) -> Line<'stati
     let gutter = format!("{:>4} {} ", "", "-");
     let mut spans = vec![Span::styled(
         gutter,
-        Style::default()
-            .fg(Color::Red)
-            .add_modifier(Modifier::BOLD),
+        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
     )];
 
     for ws in old_spans {
         let style = if ws.changed {
-            Style::default()
-                .fg(Color::White)
-                .bg(DELETION_HIGHLIGHT_BG)
+            Style::default().fg(Color::White).bg(DELETION_HIGHLIGHT_BG)
         } else {
             Style::default().fg(Color::White).bg(DELETION_BG)
         };

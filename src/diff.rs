@@ -53,7 +53,8 @@ impl DiffState {
 
         let mut pending_deletions: Vec<String> = Vec::new();
         let mut pending_additions: Vec<(usize, String)> = Vec::new();
-        let mut blocks: Vec<(Vec<String>, Vec<(usize, String)>)> = Vec::new();
+        type DiffBlock = (Vec<String>, Vec<(usize, String)>);
+        let mut blocks: Vec<DiffBlock> = Vec::new();
 
         diff.print(git2::DiffFormat::Patch, |_delta, hunk, line| {
             if let Some(hunk) = hunk {
@@ -102,10 +103,10 @@ impl DiffState {
                             std::mem::take(&mut pending_additions),
                         ));
                     }
-                    if line.origin() == ' ' {
-                        if let Some(lineno) = line.new_lineno() {
-                            last_new_lineno = Some(lineno);
-                        }
+                    if line.origin() == ' '
+                        && let Some(lineno) = line.new_lineno()
+                    {
+                        last_new_lineno = Some(lineno);
                     }
                 }
                 _ => {}
@@ -149,10 +150,7 @@ impl DiffState {
         })
     }
 
-    fn diff_workdir<'a>(
-        repo: &'a Repository,
-        opts: &mut DiffOptions,
-    ) -> Result<git2::Diff<'a>> {
+    fn diff_workdir<'a>(repo: &'a Repository, opts: &mut DiffOptions) -> Result<git2::Diff<'a>> {
         let head_tree = repo.head().ok().and_then(|r| r.peel_to_tree().ok());
         repo.diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(opts))
             .context("failed to compute diff")

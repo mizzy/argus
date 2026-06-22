@@ -22,7 +22,11 @@ pub struct Viewer {
 }
 
 impl Viewer {
-    pub fn new(file_path: String, highlighter: Highlighter, diff_state: Option<DiffState>) -> Result<Self> {
+    pub fn new(
+        file_path: String,
+        highlighter: Highlighter,
+        diff_state: Option<DiffState>,
+    ) -> Result<Self> {
         let content = std::fs::read_to_string(&file_path)?;
         let total_lines = content.lines().count();
         Ok(Self {
@@ -41,7 +45,12 @@ impl Viewer {
         })
     }
 
-    pub fn draw_with_search_input(&mut self, frame: &mut Frame, area: Rect, search_input: Option<&str>) {
+    pub fn draw_with_search_input(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        search_input: Option<&str>,
+    ) {
         ui::draw(frame, area, self, search_input);
     }
 
@@ -238,6 +247,8 @@ impl Viewer {
             .copied()
             .unwrap_or_else(|| lineno.saturating_sub(1));
         let context_lines = self.viewport_height / 4;
-        self.scroll_offset = display_row.saturating_sub(context_lines).min(self.max_scroll());
+        self.scroll_offset = display_row
+            .saturating_sub(context_lines)
+            .min(self.max_scroll());
     }
 }

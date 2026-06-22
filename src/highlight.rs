@@ -43,7 +43,8 @@ impl Highlighter {
                 let spans: Vec<Span<'static>> = ranges
                     .into_iter()
                     .map(|(style, text)| {
-                        let fg = Color::Rgb(style.foreground.r, style.foreground.g, style.foreground.b);
+                        let fg =
+                            Color::Rgb(style.foreground.r, style.foreground.g, style.foreground.b);
                         Span::styled(text.to_string(), Style::default().fg(fg))
                     })
                     .collect();

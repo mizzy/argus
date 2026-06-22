@@ -14,6 +14,16 @@ cargo clippy           # lint
 cargo fmt              # format
 ```
 
+## Setup
+
+```
+bash scripts/setup-hooks.sh  # install pre-commit hook
+```
+
+The pre-commit hook blocks direct commits to main, runs `cargo fmt --check`, `cargo clippy -D warnings`, and `cargo test`.
+
+CI runs the same checks on every PR via GitHub Actions.
+
 ## Development Process
 
 **TDD is mandatory.** Always write a failing test BEFORE implementing a fix or feature.
@@ -25,6 +35,8 @@ cargo fmt              # format
 5. Run `cargo test` to confirm no regressions
 
 Never push code without a test that covers the change. "It compiles" or "it looks right" is not evidence of correctness.
+
+**Do not merge PRs without explicit approval.** Create draft PRs and wait for review.
 
 ## Architecture
 

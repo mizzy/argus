@@ -5,7 +5,6 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiffLineKind {
     Addition,
-    Deletion,
 }
 
 #[derive(Debug, Clone)]
@@ -13,9 +12,15 @@ pub struct DiffHunk {
     pub new_start: u32,
 }
 
+#[derive(Debug, Clone)]
+pub struct DeletedLine {
+    pub content: String,
+}
+
 pub struct DiffState {
     pub hunks: Vec<DiffHunk>,
-    pub line_marks: HashMap<usize, DiffLineKind>,
+    pub addition_lines: HashMap<usize, DiffLineKind>,
+    pub deleted_lines: HashMap<usize, Vec<DeletedLine>>,
     pub is_new_file: bool,
 }
 
@@ -47,13 +52,16 @@ impl DiffState {
         if is_new_file {
             return Ok(Self {
                 hunks: Vec::new(),
-                line_marks: HashMap::new(),
+                addition_lines: HashMap::new(),
+                deleted_lines: HashMap::new(),
                 is_new_file: true,
             });
         }
 
         let mut hunks: Vec<DiffHunk> = Vec::new();
-        let mut line_marks: HashMap<usize, DiffLineKind> = HashMap::new();
+        let mut addition_lines: HashMap<usize, DiffLineKind> = HashMap::new();
+        let mut deleted_lines: HashMap<usize, Vec<DeletedLine>> = HashMap::new();
+        let mut last_new_lineno: Option<u32> = None;
 
         diff.print(git2::DiffFormat::Patch, |_delta, hunk, line| {
             if let Some(hunk) = hunk {
@@ -66,12 +74,28 @@ impl DiffState {
             match line.origin() {
                 '+' => {
                     if let Some(lineno) = line.new_lineno() {
-                        line_marks.insert(lineno as usize, DiffLineKind::Addition);
+                        addition_lines.insert(lineno as usize, DiffLineKind::Addition);
+                        last_new_lineno = Some(lineno);
                     }
                 }
                 '-' => {
-                    if let Some(lineno) = line.old_lineno() {
-                        line_marks.insert(lineno as usize, DiffLineKind::Deletion);
+                    let content = String::from_utf8_lossy(line.content())
+                        .trim_end_matches('\n')
+                        .to_string();
+                    let insert_after = if let Some(prev) = last_new_lineno {
+                        prev as usize
+                    } else {
+                        let hunk_start = hunks.last().map(|h| h.new_start).unwrap_or(1);
+                        (hunk_start as usize).saturating_sub(1)
+                    };
+                    deleted_lines
+                        .entry(insert_after)
+                        .or_default()
+                        .push(DeletedLine { content });
+                }
+                ' ' => {
+                    if let Some(lineno) = line.new_lineno() {
+                        last_new_lineno = Some(lineno);
                     }
                 }
                 _ => {}
@@ -81,18 +105,19 @@ impl DiffState {
         })?;
 
         hunks.retain(|h| {
-            line_marks
-                .iter()
-                .any(|(&lineno, _)| lineno >= h.new_start as usize)
+            let start = h.new_start as usize;
+            addition_lines.keys().any(|&k| k >= start)
+                || deleted_lines.keys().any(|&k| k >= start)
         });
 
-        if hunks.is_empty() && line_marks.is_empty() {
+        if hunks.is_empty() && addition_lines.is_empty() && deleted_lines.is_empty() {
             anyhow::bail!("no diff");
         }
 
         Ok(Self {
             hunks,
-            line_marks,
+            addition_lines,
+            deleted_lines,
             is_new_file: false,
         })
     }

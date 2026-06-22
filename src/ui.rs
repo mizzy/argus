@@ -1,7 +1,7 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 use crate::viewer::Viewer;
@@ -20,7 +20,7 @@ pub fn draw(frame: &mut Frame, area: Rect, viewer: &mut Viewer, search_input: Op
     let content_area = chunks[0];
     let bottom_area = chunks[1];
 
-    let inner_height = content_area.height.saturating_sub(2) as usize;
+    let inner_height = content_area.height as usize;
     viewer.update_viewport_height(inner_height);
 
     let display_lines = build_display_lines(viewer);
@@ -32,17 +32,7 @@ pub fn draw(frame: &mut Frame, area: Rect, viewer: &mut Viewer, search_input: Op
         .take(inner_height)
         .collect();
 
-    let title = if viewer.diff_state().is_some_and(|d| d.is_new_file) {
-        format!("{} [new]", viewer.file_path())
-    } else {
-        viewer.file_path().to_string()
-    };
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(title);
-
-    let paragraph = Paragraph::new(visible).block(block);
+    let paragraph = Paragraph::new(visible);
     frame.render_widget(paragraph, content_area);
 
     if let Some(input) = search_input {

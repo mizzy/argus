@@ -7,8 +7,14 @@ pub struct WordSpan {
 }
 
 pub fn similarity(old: &str, new: &str) -> f64 {
-    let old_tokens = tokenize(old);
-    let new_tokens = tokenize(new);
+    let old_tokens: Vec<String> = tokenize(old.trim())
+        .into_iter()
+        .filter(|t| !t.trim().is_empty())
+        .collect();
+    let new_tokens: Vec<String> = tokenize(new.trim())
+        .into_iter()
+        .filter(|t| !t.trim().is_empty())
+        .collect();
     let old_refs: Vec<&str> = old_tokens.iter().map(|s| s.as_str()).collect();
     let new_refs: Vec<&str> = new_tokens.iter().map(|s| s.as_str()).collect();
     let diff = TextDiff::from_slices(&old_refs, &new_refs);
@@ -178,6 +184,10 @@ mod tests {
             (
                 "    let mut file = File::open(path)?;",
                 "struct RawTensorInfo {",
+            ),
+            (
+                "            continue;",
+                "                io::ErrorKind::InvalidData,",
             ),
         ];
 

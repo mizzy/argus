@@ -8,9 +8,9 @@ use crate::viewer::Viewer;
 use crate::word_diff;
 
 const ADDITION_BG: Color = Color::Rgb(0, 50, 0);
-const ADDITION_HIGHLIGHT_BG: Color = Color::Rgb(0, 100, 0);
+const ADDITION_HIGHLIGHT_BG: Color = Color::Rgb(0, 130, 0);
 const DELETION_BG: Color = Color::Rgb(50, 0, 0);
-const DELETION_HIGHLIGHT_BG: Color = Color::Rgb(140, 0, 0);
+const DELETION_HIGHLIGHT_BG: Color = Color::Rgb(180, 0, 0);
 const SEARCH_HIGHLIGHT_BG: Color = Color::Rgb(120, 100, 0);
 
 pub fn draw(frame: &mut Frame, area: Rect, viewer: &mut Viewer, search_input: Option<&str>) {
@@ -205,15 +205,15 @@ fn make_word_diff_addition_line(lineno: usize, new_spans: &[word_diff::WordSpan]
     let mut spans = vec![Span::styled(gutter, gutter_style)];
 
     for ws in new_spans {
-        let bg = if ws.changed {
-            ADDITION_HIGHLIGHT_BG
+        let style = if ws.changed {
+            Style::default()
+                .fg(Color::White)
+                .bg(ADDITION_HIGHLIGHT_BG)
+                .add_modifier(Modifier::UNDERLINED)
         } else {
-            ADDITION_BG
+            Style::default().fg(Color::White).bg(ADDITION_BG)
         };
-        spans.push(Span::styled(
-            ws.text.clone(),
-            Style::default().fg(Color::White).bg(bg),
-        ));
+        spans.push(Span::styled(ws.text.clone(), style));
     }
 
     Line::from(spans)
@@ -245,15 +245,15 @@ fn make_word_diff_deleted_line(old_spans: &[word_diff::WordSpan]) -> Line<'stati
     )];
 
     for ws in old_spans {
-        let bg = if ws.changed {
-            DELETION_HIGHLIGHT_BG
+        let style = if ws.changed {
+            Style::default()
+                .fg(Color::White)
+                .bg(DELETION_HIGHLIGHT_BG)
+                .add_modifier(Modifier::UNDERLINED)
         } else {
-            DELETION_BG
+            Style::default().fg(Color::White).bg(DELETION_BG)
         };
-        spans.push(Span::styled(
-            ws.text.clone(),
-            Style::default().fg(Color::White).bg(bg),
-        ));
+        spans.push(Span::styled(ws.text.clone(), style));
     }
 
     Line::from(spans)

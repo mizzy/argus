@@ -83,7 +83,7 @@ pub fn compute_word_diff(old: &str, new: &str) -> (Vec<WordSpan>, Vec<WordSpan>)
     (old_spans, new_spans)
 }
 
-const MAX_CHANGED_RATIO: f64 = 0.7;
+const MAX_CHANGED_RATIO: f64 = 0.4;
 
 pub fn compute_word_diff_if_useful(
     old: &str,
@@ -107,7 +107,30 @@ pub fn compute_word_diff_if_useful(
         return None;
     }
 
+    let max_unchanged_run = longest_unchanged_run(&old_spans)
+        .max(longest_unchanged_run(&new_spans));
+    if max_unchanged_run < 3 {
+        return None;
+    }
+
     Some((old_spans, new_spans))
+}
+
+fn longest_unchanged_run(spans: &[WordSpan]) -> usize {
+    let mut max_len = 0;
+    let mut current_len = 0;
+    for s in spans {
+        if !s.changed {
+            let trimmed = s.text.trim();
+            if trimmed.chars().any(|c| c.is_alphanumeric()) {
+                current_len += trimmed.len();
+                continue;
+            }
+        }
+        max_len = max_len.max(current_len);
+        current_len = 0;
+    }
+    max_len.max(current_len)
 }
 
 #[cfg(test)]
@@ -229,14 +252,29 @@ mod tests {
 
     #[test]
     fn mostly_changed_word_diff_returns_none() {
-        let old = "            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;";
-        let new = "            ));";
-        let result = compute_word_diff_if_useful(old, new);
-        assert!(
-            result.is_none(),
-            "word diff should be None when most of the line changed, got {:?}",
-            result
-        );
+        let cases = vec![
+            (
+                "            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;",
+                "            ));",
+            ),
+            (
+                "        // Write dummy tensor data (64 bytes = 16 f32 values)",
+                "        file.write_all(data).unwrap();",
+            ),
+            (
+                "        file.write_all(&[0u8; 64]).unwrap();",
+                "        file.flush().unwrap();",
+            ),
+        ];
+
+        for (old, new) in &cases {
+            let result = compute_word_diff_if_useful(old, new);
+            assert!(
+                result.is_none(),
+                "word diff should be None when most of the line changed: old={:?} new={:?} sim={}",
+                old, new, similarity(old, new)
+            );
+        }
     }
 
     #[test]

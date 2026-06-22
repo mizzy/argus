@@ -217,7 +217,7 @@ fn make_deleted_line(content: &str, _paired: Option<&str>) -> Line<'static> {
         ),
         Span::styled(
             content.to_string(),
-            Style::default().fg(Color::Red).bg(DELETION_BG),
+            Style::default().fg(Color::White).bg(DELETION_BG),
         ),
     ])
 }
@@ -239,7 +239,7 @@ fn make_word_diff_deleted_line(old_spans: &[word_diff::WordSpan]) -> Line<'stati
         };
         spans.push(Span::styled(
             ws.text.clone(),
-            Style::default().fg(Color::Red).bg(bg),
+            Style::default().fg(Color::White).bg(bg),
         ));
     }
 

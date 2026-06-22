@@ -16,6 +16,7 @@ pub struct DiffHunk {
 pub struct DiffState {
     pub hunks: Vec<DiffHunk>,
     pub line_marks: HashMap<usize, DiffLineKind>,
+    pub is_new_file: bool,
 }
 
 impl DiffState {
@@ -31,6 +32,7 @@ impl DiffState {
 
         let mut opts = DiffOptions::new();
         opts.pathspec(&relative);
+        opts.include_untracked(true);
 
         let diff = if let Some(rev_spec) = rev {
             Self::diff_from_rev(&repo, rev_spec, &mut opts)?
@@ -40,8 +42,12 @@ impl DiffState {
 
         let mut hunks: Vec<DiffHunk> = Vec::new();
         let mut line_marks: HashMap<usize, DiffLineKind> = HashMap::new();
+        let mut is_new_file = false;
 
-        diff.print(git2::DiffFormat::Patch, |_delta, hunk, line| {
+        diff.print(git2::DiffFormat::Patch, |delta, hunk, line| {
+            if delta.status() == git2::Delta::Added {
+                is_new_file = true;
+            }
             if let Some(hunk) = hunk {
                 let new_start = hunk.new_start();
                 if hunks.last().is_none_or(|h| h.new_start != new_start) {
@@ -72,11 +78,23 @@ impl DiffState {
                 .any(|(&lineno, _)| lineno >= h.new_start as usize)
         });
 
+        if is_new_file {
+            return Ok(Self {
+                hunks: Vec::new(),
+                line_marks: HashMap::new(),
+                is_new_file: true,
+            });
+        }
+
         if hunks.is_empty() && line_marks.is_empty() {
             anyhow::bail!("no diff");
         }
 
-        Ok(Self { hunks, line_marks })
+        Ok(Self {
+            hunks,
+            line_marks,
+            is_new_file: false,
+        })
     }
 
     fn diff_workdir<'a>(

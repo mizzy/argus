@@ -30,6 +30,17 @@ impl App {
         })
     }
 
+    pub fn from_content(content: String, _rev: Option<String>) -> Result<Self> {
+        let highlighter = Highlighter::new("")?;
+        let viewer = Viewer::from_content(content, "<stdin>".to_string(), highlighter, None);
+
+        Ok(Self {
+            viewer,
+            mode: Mode::Normal,
+            should_quit: false,
+        })
+    }
+
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         while !self.should_quit {
             terminal.clear()?;
@@ -129,6 +140,14 @@ mod tests {
 
     fn make_key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
         KeyEvent::new(code, modifiers)
+    }
+
+    #[test]
+    fn app_from_stdin_content() {
+        let content = "line 1\nline 2\nline 3\n".to_string();
+        let mut app = App::from_content(content, None).unwrap();
+        app.viewer.update_viewport_height(10);
+        assert_eq!(app.viewer.total_lines(), 3);
     }
 
     #[test]

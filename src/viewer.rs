@@ -28,9 +28,23 @@ impl Viewer {
         diff_state: Option<DiffState>,
     ) -> Result<Self> {
         let content = std::fs::read_to_string(&file_path)?;
-        let total_lines = content.lines().count();
-        Ok(Self {
+        Ok(Self::from_content(
+            content,
             file_path,
+            highlighter,
+            diff_state,
+        ))
+    }
+
+    pub fn from_content(
+        content: String,
+        file_label: String,
+        highlighter: Highlighter,
+        diff_state: Option<DiffState>,
+    ) -> Self {
+        let total_lines = content.lines().count();
+        Self {
+            file_path: file_label,
             highlighter,
             content,
             scroll_offset: 0,
@@ -42,7 +56,7 @@ impl Viewer {
             search_matches: Vec::new(),
             current_match: 0,
             lineno_to_display_row: std::collections::HashMap::new(),
-        })
+        }
     }
 
     pub fn draw_with_search_input(

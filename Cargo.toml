@@ -10,6 +10,7 @@ repository = "https://github.com/mizzy/argus"
 clap = { version = "4", features = ["derive"] }
 crossterm = "0.28"
 git2 = "0.20"
+libc = "0.2"
 ratatui = "0.30"
 syntect = "5"
 anyhow = "1"

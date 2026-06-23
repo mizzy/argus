@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use std::io::{IsTerminal, Read};
+use std::os::unix::io::AsRawFd;
 
 mod app;
 mod diff;
@@ -36,6 +37,13 @@ fn main() -> Result<()> {
 
         let mut content = String::new();
         std::io::stdin().read_to_string(&mut content)?;
+        let tty = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/tty")?;
+        if unsafe { libc::dup2(tty.as_raw_fd(), libc::STDIN_FILENO) } == -1 {
+            return Err(std::io::Error::last_os_error().into());
+        }
         app::App::from_content(content, cli.rev)?
     };
 

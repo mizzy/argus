@@ -3,6 +3,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
+use unicode_width::UnicodeWidthChar;
 
 use crate::viewer::Viewer;
 use crate::word_diff;
@@ -12,6 +13,7 @@ const ADDITION_HIGHLIGHT_BG: Color = Color::Rgb(0, 130, 0);
 const DELETION_BG: Color = Color::Rgb(50, 0, 0);
 const DELETION_HIGHLIGHT_BG: Color = Color::Rgb(180, 0, 0);
 const SEARCH_HIGHLIGHT_BG: Color = Color::Rgb(120, 100, 0);
+const GUTTER_WIDTH: usize = 7;
 
 pub fn draw(frame: &mut Frame, area: Rect, viewer: &mut Viewer, search_input: Option<&str>) {
     let bottom_height = if search_input.is_some() { 2 } else { 1 };
@@ -26,7 +28,7 @@ pub fn draw(frame: &mut Frame, area: Rect, viewer: &mut Viewer, search_input: Op
     let inner_height = content_area.height as usize;
     viewer.update_viewport_height(inner_height);
 
-    let (display_lines, lineno_map) = build_display_lines(viewer);
+    let (display_lines, lineno_map) = build_display_lines(viewer, content_area.width);
     viewer.update_total_display_lines(display_lines.len());
     viewer.update_lineno_to_display_row(lineno_map);
 
@@ -65,10 +67,12 @@ pub fn draw(frame: &mut Frame, area: Rect, viewer: &mut Viewer, search_input: Op
     }
 }
 
-fn build_display_lines<'a>(
+fn build_display_lines(
     viewer: &Viewer,
-) -> (Vec<Line<'a>>, std::collections::HashMap<usize, usize>) {
+    width: u16,
+) -> (Vec<Line<'static>>, std::collections::HashMap<usize, usize>) {
     let highlighted = viewer.highlighter().highlight(viewer.content());
+    let content_width = width.saturating_sub(GUTTER_WIDTH as u16) as usize;
 
     let addition_marks = viewer
         .diff_state()
@@ -97,12 +101,21 @@ fn build_display_lines<'a>(
     let search_line_set: std::collections::HashSet<usize> =
         viewer.search_matches().iter().copied().collect();
 
-    let mut lines: Vec<Line<'a>> = Vec::new();
+    let mut lines: Vec<Line<'static>> = Vec::new();
     let mut lineno_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
 
     if let Some(deleted) = deleted_map.get(&0) {
         for d in deleted {
-            lines.push(make_deleted_line(&d.content));
+            append_wrapped_line(
+                &mut lines,
+                format!("{:>4} {} ", "", "-"),
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                vec![Span::styled(
+                    d.content.clone(),
+                    Style::default().fg(Color::White).bg(DELETION_BG),
+                )],
+                content_width,
+            );
         }
     }
 
@@ -124,43 +137,47 @@ fn build_display_lines<'a>(
                 Some(new_spans)
             });
             if let Some(new_spans) = word_diff_result {
-                lines.push(make_word_diff_addition_line(lineno, &new_spans));
+                append_wrapped_line(
+                    &mut lines,
+                    format!("{:>4} {} ", lineno, "+"),
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                    word_diff_addition_spans(&new_spans),
+                    content_width,
+                );
             } else {
                 let gutter = format!("{:>4} {} ", lineno, "+");
                 let gutter_style = Style::default()
                     .fg(Color::Green)
                     .add_modifier(Modifier::BOLD);
-                let mut spans = vec![Span::styled(gutter, gutter_style)];
                 let bg = if is_search_hit {
                     SEARCH_HIGHLIGHT_BG
                 } else {
                     ADDITION_BG
                 };
-                spans.extend(
-                    hl_line
-                        .spans
-                        .into_iter()
-                        .map(|s| Span::styled(s.content, s.style.bg(bg))),
-                );
-                lines.push(Line::from(spans));
+                let spans = hl_line
+                    .spans
+                    .into_iter()
+                    .map(|s| Span::styled(s.content, s.style.bg(bg)))
+                    .collect();
+                append_wrapped_line(&mut lines, gutter, gutter_style, spans, content_width);
             }
         } else {
             let gutter = format!("{:>4}   ", lineno);
             let gutter_style = Style::default().fg(Color::DarkGray);
-            let mut spans = vec![Span::styled(gutter, gutter_style)];
 
-            if is_search_hit {
-                spans.extend(
-                    hl_line
-                        .spans
-                        .into_iter()
-                        .map(|s| Span::styled(s.content, s.style.bg(SEARCH_HIGHLIGHT_BG))),
-                );
+            let spans = if is_search_hit {
+                hl_line
+                    .spans
+                    .into_iter()
+                    .map(|s| Span::styled(s.content, s.style.bg(SEARCH_HIGHLIGHT_BG)))
+                    .collect()
             } else {
-                spans.extend(hl_line.spans);
-            }
+                hl_line.spans
+            };
 
-            lines.push(Line::from(spans));
+            append_wrapped_line(&mut lines, gutter, gutter_style, spans, content_width);
         }
 
         if let Some(deleted) = deleted_map.get(&lineno) {
@@ -172,15 +189,107 @@ fn build_display_lines<'a>(
                     &addition_contents,
                 );
                 if let Some(old_spans) = word_diff_old {
-                    lines.push(make_word_diff_deleted_line(&old_spans));
+                    append_wrapped_line(
+                        &mut lines,
+                        format!("{:>4} {} ", "", "-"),
+                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                        word_diff_deleted_spans(&old_spans),
+                        content_width,
+                    );
                 } else {
-                    lines.push(make_deleted_line(&d.content));
+                    append_wrapped_line(
+                        &mut lines,
+                        format!("{:>4} {} ", "", "-"),
+                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                        vec![Span::styled(
+                            d.content.clone(),
+                            Style::default().fg(Color::White).bg(DELETION_BG),
+                        )],
+                        content_width,
+                    );
                 }
             }
         }
     }
 
     (lines, lineno_map)
+}
+
+fn append_wrapped_line(
+    lines: &mut Vec<Line<'static>>,
+    gutter: String,
+    gutter_style: Style,
+    content_spans: Vec<Span<'static>>,
+    content_width: usize,
+) {
+    for (row_index, row_spans) in wrap_spans(content_spans, content_width)
+        .into_iter()
+        .enumerate()
+    {
+        let row_gutter = if row_index == 0 {
+            gutter.clone()
+        } else {
+            " ".repeat(GUTTER_WIDTH)
+        };
+        let mut spans = vec![Span::styled(row_gutter, gutter_style)];
+        spans.extend(row_spans);
+        lines.push(Line::from(spans));
+    }
+}
+
+fn wrap_spans(spans: Vec<Span<'static>>, max_width: usize) -> Vec<Vec<Span<'static>>> {
+    if max_width == 0 {
+        return vec![vec![]];
+    }
+
+    let mut rows: Vec<Vec<Span<'static>>> = vec![vec![]];
+    let mut current_width = 0;
+
+    for span in spans {
+        let style = span.style;
+        let mut remaining = span.content.to_string();
+
+        while !remaining.is_empty() {
+            let available = max_width - current_width;
+            if available == 0 {
+                rows.push(vec![]);
+                current_width = 0;
+                continue;
+            }
+
+            let mut take_width = 0;
+            let mut take_bytes = 0;
+            for ch in remaining.chars() {
+                let ch_width = ch.width().unwrap_or(0);
+                if take_width + ch_width > available {
+                    break;
+                }
+                take_width += ch_width;
+                take_bytes += ch.len_utf8();
+            }
+
+            if take_bytes == 0 {
+                if current_width > 0 {
+                    rows.push(vec![]);
+                    current_width = 0;
+                    continue;
+                }
+
+                let ch = remaining.chars().next().unwrap();
+                take_width = ch.width().unwrap_or(0);
+                take_bytes = ch.len_utf8();
+            }
+
+            let (taken, rest) = remaining.split_at(take_bytes);
+            rows.last_mut()
+                .unwrap()
+                .push(Span::styled(taken.to_string(), style));
+            current_width = (current_width + take_width).min(max_width);
+            remaining = rest.to_string();
+        }
+    }
+
+    rows
 }
 
 fn resolve_deleted_line_word_diff(
@@ -199,56 +308,32 @@ fn resolve_deleted_line_word_diff(
     Some(old_spans)
 }
 
-fn make_word_diff_addition_line(lineno: usize, new_spans: &[word_diff::WordSpan]) -> Line<'static> {
-    let gutter = format!("{:>4} {} ", lineno, "+");
-    let gutter_style = Style::default()
-        .fg(Color::Green)
-        .add_modifier(Modifier::BOLD);
-    let mut spans = vec![Span::styled(gutter, gutter_style)];
-
-    for ws in new_spans {
-        let style = if ws.changed {
-            Style::default().fg(Color::White).bg(ADDITION_HIGHLIGHT_BG)
-        } else {
-            Style::default().fg(Color::White).bg(ADDITION_BG)
-        };
-        spans.push(Span::styled(ws.text.clone(), style));
-    }
-
-    Line::from(spans)
+fn word_diff_addition_spans(new_spans: &[word_diff::WordSpan]) -> Vec<Span<'static>> {
+    new_spans
+        .iter()
+        .map(|ws| {
+            let style = if ws.changed {
+                Style::default().fg(Color::White).bg(ADDITION_HIGHLIGHT_BG)
+            } else {
+                Style::default().fg(Color::White).bg(ADDITION_BG)
+            };
+            Span::styled(ws.text.clone(), style)
+        })
+        .collect()
 }
 
-fn make_deleted_line(content: &str) -> Line<'static> {
-    let gutter = format!("{:>4} {} ", "", "-");
-    Line::from(vec![
-        Span::styled(
-            gutter,
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            content.to_string(),
-            Style::default().fg(Color::White).bg(DELETION_BG),
-        ),
-    ])
-}
-
-fn make_word_diff_deleted_line(old_spans: &[word_diff::WordSpan]) -> Line<'static> {
-    let gutter = format!("{:>4} {} ", "", "-");
-    let mut spans = vec![Span::styled(
-        gutter,
-        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-    )];
-
-    for ws in old_spans {
-        let style = if ws.changed {
-            Style::default().fg(Color::White).bg(DELETION_HIGHLIGHT_BG)
-        } else {
-            Style::default().fg(Color::White).bg(DELETION_BG)
-        };
-        spans.push(Span::styled(ws.text.clone(), style));
-    }
-
-    Line::from(spans)
+fn word_diff_deleted_spans(old_spans: &[word_diff::WordSpan]) -> Vec<Span<'static>> {
+    old_spans
+        .iter()
+        .map(|ws| {
+            let style = if ws.changed {
+                Style::default().fg(Color::White).bg(DELETION_HIGHLIGHT_BG)
+            } else {
+                Style::default().fg(Color::White).bg(DELETION_BG)
+            };
+            Span::styled(ws.text.clone(), style)
+        })
+        .collect()
 }
 
 fn build_status_line<'a>(viewer: &Viewer) -> Line<'a> {
@@ -306,6 +391,87 @@ fn build_status_line<'a>(viewer: &Viewer) -> Line<'a> {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn long_lines_are_wrapped() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write;
+        writeln!(tmp, "{}", "A".repeat(60)).unwrap();
+        writeln!(tmp, "short").unwrap();
+        let path = tmp.path().to_str().unwrap().to_string();
+        std::mem::forget(tmp);
+
+        let highlighter = crate::highlight::Highlighter::new(&path).unwrap();
+        let mut viewer = crate::viewer::Viewer::new(path, highlighter, None).unwrap();
+
+        let backend = TestBackend::new(40, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                crate::ui::draw(frame, area, &mut viewer, None);
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let row0: String = (0..40)
+            .map(|x| {
+                buf.cell(ratatui::layout::Position::new(x, 0))
+                    .unwrap()
+                    .symbol()
+                    .chars()
+                    .next()
+                    .unwrap_or(' ')
+            })
+            .collect();
+        assert!(
+            row0.trim_start().starts_with("1"),
+            "row 0 should have line number 1: {:?}",
+            row0
+        );
+
+        let row1: String = (0..40)
+            .map(|x| {
+                buf.cell(ratatui::layout::Position::new(x, 1))
+                    .unwrap()
+                    .symbol()
+                    .chars()
+                    .next()
+                    .unwrap_or(' ')
+            })
+            .collect();
+        assert!(
+            row1.contains("A"),
+            "row 1 should contain continuation of A's: {:?}",
+            row1
+        );
+        let gutter1 = &row1[..7];
+        assert!(
+            gutter1.trim().is_empty(),
+            "continuation row gutter should be blank: {:?}",
+            gutter1
+        );
+
+        let row2: String = (0..40)
+            .map(|x| {
+                buf.cell(ratatui::layout::Position::new(x, 2))
+                    .unwrap()
+                    .symbol()
+                    .chars()
+                    .next()
+                    .unwrap_or(' ')
+            })
+            .collect();
+        assert!(
+            row2.contains("short"),
+            "row 2 should contain 'short': {:?}",
+            row2
+        );
+    }
 
     #[test]
     fn unpaired_deletion_is_not_word_diffed() {

@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Clear, Paragraph};
 
 use crate::viewer::Viewer;
 use crate::word_diff;
@@ -36,6 +36,7 @@ pub fn draw(frame: &mut Frame, area: Rect, viewer: &mut Viewer, search_input: Op
         .take(inner_height)
         .collect();
 
+    frame.render_widget(Clear, content_area);
     let paragraph = Paragraph::new(visible);
     frame.render_widget(paragraph, content_area);
 
@@ -305,7 +306,76 @@ fn build_status_line<'a>(viewer: &Viewer) -> Line<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::highlight::Highlighter;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Position;
     use std::collections::HashMap;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    fn buffer_row_text(buffer: &Buffer, y: u16) -> String {
+        (0..60)
+            .map(|x| {
+                buffer
+                    .cell(Position::new(x, y))
+                    .expect("cell should be inside the test backend")
+                    .symbol()
+                    .to_string()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn short_lines_do_not_show_stale_content() {
+        let mut file = NamedTempFile::new().unwrap();
+        let mut content = String::new();
+        for line in 1..=10 {
+            content.push_str(&format!(
+                "long-{line:02} STALE-LONG-CONTENT-THAT-SHOULD-BE-CLEARED\n"
+            ));
+        }
+        for line in 11..=20 {
+            content.push_str(&format!("short-{line:02}\n"));
+        }
+        content.push_str("tail\n");
+        file.write_all(content.as_bytes()).unwrap();
+
+        let path = file.path().to_string_lossy().into_owned();
+        let highlighter = Highlighter::new(&path).unwrap();
+        let mut viewer = Viewer::new(path, highlighter, None).unwrap();
+        let backend = TestBackend::new(60, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        {
+            let mut frame = terminal.get_frame();
+            let area = frame.area();
+            draw(&mut frame, area, &mut viewer, None);
+        }
+
+        viewer.scroll_down(10);
+        assert_eq!(viewer.scroll_offset(), 10);
+
+        {
+            let mut frame = terminal.get_frame();
+            let area = frame.area();
+            draw(&mut frame, area, &mut viewer, None);
+        }
+
+        let buffer = terminal.current_buffer_mut();
+        for y in 0..10 {
+            let row = buffer_row_text(buffer, y);
+            assert!(
+                row.contains(&format!("short-{:02}", y + 11)),
+                "row {y} should show the expected short line, got {row:?}"
+            );
+            assert!(
+                !row.contains("STALE-LONG-CONTENT"),
+                "row {y} retained stale long-line content: {row:?}"
+            );
+        }
+    }
 
     #[test]
     fn unpaired_deletion_is_not_word_diffed() {

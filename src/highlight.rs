@@ -45,11 +45,70 @@ impl Highlighter {
                     .map(|(style, text)| {
                         let fg =
                             Color::Rgb(style.foreground.r, style.foreground.g, style.foreground.b);
-                        Span::styled(text.to_string(), Style::default().fg(fg))
+                        Span::styled(text.replace('\t', "    "), Style::default().fg(fg))
                     })
                     .collect();
                 Line::from(spans)
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn japanese_text_has_no_extra_spaces() {
+        let highlighter = Highlighter {
+            syntax_set: SyntaxSet::load_defaults_newlines(),
+            theme_set: ThemeSet::load_defaults(),
+            extension: "go".to_string(),
+        };
+
+        let content = "fmt.Println(\"空席照会失敗\")\n";
+        let lines = highlighter.highlight(content);
+
+        // Concatenate all span text in the first line
+        let full_text: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+
+        // Print each span for debugging
+        for (i, span) in lines[0].spans.iter().enumerate() {
+            eprintln!("span {}: {:?}", i, span.content);
+        }
+
+        // The text should contain "空席照会失敗" without spaces between characters
+        assert!(
+            full_text.contains("空席照会失敗"),
+            "Japanese text should not have extra spaces: got {:?}",
+            full_text
+        );
+    }
+
+    #[test]
+    fn tabs_are_expanded_to_spaces() {
+        let highlighter = Highlighter {
+            syntax_set: SyntaxSet::load_defaults_newlines(),
+            theme_set: ThemeSet::load_defaults(),
+            extension: "go".to_string(),
+        };
+
+        let content = "\tfmt.Println(\"hello\")\n";
+        let lines = highlighter.highlight(content);
+
+        let full_text: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+
+        // Tab should be expanded to spaces, not remain as \t
+        assert!(
+            !full_text.contains('\t'),
+            "tabs should be expanded to spaces: got {:?}",
+            full_text
+        );
+        // Should start with spaces (expanded tab)
+        assert!(
+            full_text.starts_with("    "),
+            "expanded tab should produce leading spaces: got {:?}",
+            full_text
+        );
     }
 }

@@ -32,7 +32,10 @@ impl App {
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         while !self.should_quit {
-            terminal.draw(|frame| self.draw(frame))?;
+            terminal.clear()?;
+            terminal.draw(|frame| {
+                self.draw(frame);
+            })?;
             self.handle_events()?;
         }
         Ok(())

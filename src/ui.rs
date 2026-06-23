@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Clear, Paragraph};
+use ratatui::widgets::Paragraph;
 
 use crate::viewer::Viewer;
 use crate::word_diff;
@@ -36,7 +36,6 @@ pub fn draw(frame: &mut Frame, area: Rect, viewer: &mut Viewer, search_input: Op
         .take(inner_height)
         .collect();
 
-    frame.render_widget(Clear, content_area);
     let paragraph = Paragraph::new(visible);
     frame.render_widget(paragraph, content_area);
 

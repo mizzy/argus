@@ -3,7 +3,7 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use syntect::easy::HighlightLines;
 use syntect::highlighting::ThemeSet;
-use syntect::parsing::SyntaxSet;
+use syntect::parsing::{SyntaxSet, SyntaxSetBuilder};
 use syntect::util::LinesWithEndings;
 
 pub struct Highlighter {
@@ -14,7 +14,7 @@ pub struct Highlighter {
 
 impl Highlighter {
     pub fn new(path: &str) -> Result<Self> {
-        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax_set = Self::load_syntax_set();
         let theme_set = ThemeSet::load_defaults();
         let extension = std::path::Path::new(path)
             .extension()
@@ -27,6 +27,23 @@ impl Highlighter {
             theme_set,
             extension,
         })
+    }
+
+    fn load_syntax_set() -> SyntaxSet {
+        let bundled_bytes = include_bytes!(concat!(env!("OUT_DIR"), "/syntax_set.bin"));
+
+        if let Ok(syntax_set) = syntect::dumps::from_uncompressed_data::<SyntaxSet>(bundled_bytes) {
+            let user_dir = argus_config_dir().join("syntaxes");
+            if user_dir.exists() {
+                let mut builder: SyntaxSetBuilder = syntax_set.into_builder();
+                let _ = builder.add_from_folder(&user_dir, true);
+                return builder.build();
+            }
+
+            return syntax_set;
+        }
+
+        SyntaxSet::load_defaults_newlines()
     }
 
     pub fn highlight(&self, content: &str) -> Vec<Line<'static>> {
@@ -54,17 +71,29 @@ impl Highlighter {
     }
 }
 
+fn argus_config_dir() -> std::path::PathBuf {
+    if let Some(home) = std::env::var_os("HOME") {
+        return std::path::PathBuf::from(home).join(".config/argus");
+    }
+
+    std::path::PathBuf::from(".config/argus")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn create_test_highlighter(ext: &str) -> Highlighter {
+        Highlighter {
+            syntax_set: Highlighter::load_syntax_set(),
+            theme_set: ThemeSet::load_defaults(),
+            extension: ext.to_string(),
+        }
+    }
+
     #[test]
     fn japanese_text_has_no_extra_spaces() {
-        let highlighter = Highlighter {
-            syntax_set: SyntaxSet::load_defaults_newlines(),
-            theme_set: ThemeSet::load_defaults(),
-            extension: "go".to_string(),
-        };
+        let highlighter = create_test_highlighter("go");
 
         let content = "fmt.Println(\"空席照会失敗\")\n";
         let lines = highlighter.highlight(content);
@@ -87,11 +116,7 @@ mod tests {
 
     #[test]
     fn tabs_are_expanded_to_spaces() {
-        let highlighter = Highlighter {
-            syntax_set: SyntaxSet::load_defaults_newlines(),
-            theme_set: ThemeSet::load_defaults(),
-            extension: "go".to_string(),
-        };
+        let highlighter = create_test_highlighter("go");
 
         let content = "\tfmt.Println(\"hello\")\n";
         let lines = highlighter.highlight(content);
@@ -109,6 +134,45 @@ mod tests {
             full_text.starts_with("    "),
             "expanded tab should produce leading spaces: got {:?}",
             full_text
+        );
+    }
+
+    #[test]
+    fn jsonnet_syntax_is_available() {
+        let highlighter = Highlighter::new("test.jsonnet").unwrap();
+        let content = "local x = 1;\n{ key: x }\n";
+        let lines = highlighter.highlight(content);
+        let full_text: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+
+        assert!(
+            lines[0].spans.len() > 1,
+            "jsonnet should have syntax highlighting (multiple spans), got {} span(s): {:?}",
+            lines[0].spans.len(),
+            full_text
+        );
+    }
+
+    #[test]
+    fn terraform_syntax_is_available() {
+        let highlighter = Highlighter::new("main.tf").unwrap();
+        let content = "resource \"aws_instance\" \"example\" {\n  ami = \"abc\"\n}\n";
+        let lines = highlighter.highlight(content);
+
+        assert!(
+            lines[0].spans.len() > 1,
+            "terraform should have syntax highlighting"
+        );
+    }
+
+    #[test]
+    fn carina_crn_syntax_is_available() {
+        let highlighter = Highlighter::new("test.crn").unwrap();
+        let content = "let vpc = use { source = 'aws_vpc' }\n";
+        let lines = highlighter.highlight(content);
+        assert!(
+            lines[0].spans.len() > 1,
+            "carina .crn should have syntax highlighting (multiple spans), got {} span(s)",
+            lines[0].spans.len()
         );
     }
 }

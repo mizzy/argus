@@ -1,0 +1,83 @@
+%YAML 1.2
+---
+name: Carina
+file_extensions:
+  - crn
+scope: source.carina
+
+contexts:
+  main:
+    - include: comments
+    - include: strings
+    - include: keywords
+    - include: resource-types
+    - include: regions
+    - include: types
+    - include: numbers
+    - include: booleans
+    - include: operators
+    - include: functions
+    - include: properties
+    - include: variables
+
+  comments:
+    - match: '#.*$'
+      scope: comment.line.number-sign.carina
+
+  keywords:
+    - match: '\b(let|fn|wait)\b'
+      scope: storage.type.carina
+    - match: '\b(provider|backend|upstream_state|exports|attributes|arguments|validation|moved|removed)\b'
+      scope: keyword.declaration.carina
+    - match: '\b(for|in|if|else)\b'
+      scope: keyword.control.carina
+    - match: '\b(depends_on|use|import|require|read|until)\b'
+      scope: keyword.other.carina
+    - match: '\bnull\b'
+      scope: constant.language.null.carina
+
+  resource-types:
+    - match: '\b(aws|awscc|gcp|azure)\.[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)*\b'
+      scope: support.class.carina
+
+  regions:
+    - match: '\baws\.Region\.[a-z][a-z0-9_]*\b'
+      scope: constant.other.region.carina
+
+  types:
+    - match: '\b[A-Z][A-Za-z0-9]*\b'
+      scope: entity.name.type.carina
+
+  strings:
+    - match: '"[^"]*"'
+      scope: string.quoted.double.carina
+    - match: "'[^']*'"
+      scope: string.quoted.single.carina
+
+  numbers:
+    - match: '\b[0-9]+(seconds|second|sec|s|minutes|minute|min|m|hours|hour|hr|h)\b'
+      scope: constant.numeric.duration.carina
+    - match: '\b[0-9]+\b'
+      scope: constant.numeric.carina
+
+  booleans:
+    - match: '\b(true|false)\b'
+      scope: constant.language.boolean.carina
+
+  operators:
+    - match: '='
+      scope: keyword.operator.assignment.carina
+
+  functions:
+    - match: '\b(env)\s*(?=\()'
+      scope: entity.name.function.carina
+
+  properties:
+    - match: '^\s*([a-z][a-z0-9_]*)\s*(?==)'
+      captures:
+        1: variable.other.property.carina
+
+  variables:
+    - match: '\blet\s+([a-z][a-z0-9_]*)'
+      captures:
+        1: variable.other.carina

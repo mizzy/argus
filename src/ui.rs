@@ -9,9 +9,9 @@ use crate::viewer::Viewer;
 use crate::word_diff;
 
 const ADDITION_BG: Color = Color::Rgb(0, 50, 0);
-const ADDITION_HIGHLIGHT_BG: Color = Color::Rgb(0, 130, 0);
+const ADDITION_HIGHLIGHT_BG: Color = Color::Rgb(0, 80, 0);
 const DELETION_BG: Color = Color::Rgb(50, 0, 0);
-const DELETION_HIGHLIGHT_BG: Color = Color::Rgb(180, 0, 0);
+const DELETION_HIGHLIGHT_BG: Color = Color::Rgb(120, 0, 0);
 const SEARCH_HIGHLIGHT_BG: Color = Color::Rgb(120, 100, 0);
 const GUTTER_WIDTH: usize = 7;
 
@@ -109,7 +109,7 @@ fn build_display_lines(
             append_wrapped_line(
                 &mut lines,
                 format!("{:>4} {} ", "", "-"),
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Red),
                 vec![Span::styled(
                     d.content.clone(),
                     Style::default().fg(Color::White).bg(DELETION_BG),
@@ -140,17 +140,13 @@ fn build_display_lines(
                 append_wrapped_line(
                     &mut lines,
                     format!("{:>4} {} ", lineno, "+"),
-                    Style::default()
-                        .fg(Color::Green)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(Color::Green),
                     word_diff_addition_spans(&new_spans),
                     content_width,
                 );
             } else {
                 let gutter = format!("{:>4} {} ", lineno, "+");
-                let gutter_style = Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD);
+                let gutter_style = Style::default().fg(Color::Green);
                 let bg = if is_search_hit {
                     SEARCH_HIGHLIGHT_BG
                 } else {
@@ -192,7 +188,7 @@ fn build_display_lines(
                     append_wrapped_line(
                         &mut lines,
                         format!("{:>4} {} ", "", "-"),
-                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                        Style::default().fg(Color::Red),
                         word_diff_deleted_spans(&old_spans),
                         content_width,
                     );
@@ -200,7 +196,7 @@ fn build_display_lines(
                     append_wrapped_line(
                         &mut lines,
                         format!("{:>4} {} ", "", "-"),
-                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                        Style::default().fg(Color::Red),
                         vec![Span::styled(
                             d.content.clone(),
                             Style::default().fg(Color::White).bg(DELETION_BG),

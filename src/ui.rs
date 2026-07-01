@@ -109,7 +109,7 @@ fn build_display_lines(
             append_wrapped_line(
                 &mut lines,
                 format!("{:>4} {} ", "", "-"),
-                Style::default().fg(Color::Red),
+                Style::default().fg(Color::Red).bg(DELETION_BG),
                 vec![Span::styled(
                     d.content.clone(),
                     Style::default().fg(Color::White).bg(DELETION_BG),
@@ -140,13 +140,13 @@ fn build_display_lines(
                 append_wrapped_line(
                     &mut lines,
                     format!("{:>4} {} ", lineno, "+"),
-                    Style::default().fg(Color::Green),
+                    Style::default().fg(Color::Green).bg(ADDITION_BG),
                     word_diff_addition_spans(&new_spans),
                     content_width,
                 );
             } else {
                 let gutter = format!("{:>4} {} ", lineno, "+");
-                let gutter_style = Style::default().fg(Color::Green);
+                let gutter_style = Style::default().fg(Color::Green).bg(ADDITION_BG);
                 let bg = if is_search_hit {
                     SEARCH_HIGHLIGHT_BG
                 } else {
@@ -188,7 +188,7 @@ fn build_display_lines(
                     append_wrapped_line(
                         &mut lines,
                         format!("{:>4} {} ", "", "-"),
-                        Style::default().fg(Color::Red),
+                        Style::default().fg(Color::Red).bg(DELETION_BG),
                         word_diff_deleted_spans(&old_spans),
                         content_width,
                     );
@@ -196,7 +196,7 @@ fn build_display_lines(
                     append_wrapped_line(
                         &mut lines,
                         format!("{:>4} {} ", "", "-"),
-                        Style::default().fg(Color::Red),
+                        Style::default().fg(Color::Red).bg(DELETION_BG),
                         vec![Span::styled(
                             d.content.clone(),
                             Style::default().fg(Color::White).bg(DELETION_BG),

@@ -1,6 +1,6 @@
 [package]
 name = "argus"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 description = "A code reading tool with syntax highlighting and git diff navigation"
 license = "MIT OR Apache-2.0"
